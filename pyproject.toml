@@ -1,0 +1,55 @@
+[project]
+name = "kb-assistant"
+version = "0.1.0"
+description = "AI knowledge assistant: RAG + Bedrock + LangChain + MCP, built production-style"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+# A uv "workspace" is a monorepo: one lockfile, one virtualenv, several packages.
+# apps/*     -> things you deploy (API now; ingestion worker and MCP server later)
+# packages/* -> shared libraries the apps import
+[tool.uv.workspace]
+members = ["apps/*", "packages/*"]
+
+[tool.uv.sources]
+kb-core = { workspace = true }
+kb-api = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "kb-core",
+    "kb-api",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "boto3-stubs[bedrock-runtime,sts]>=1.42",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = pyflakes+pycodestyle, I = import order, B = bugbear, UP = modern syntax,
+# S = security (bandit), SIM = simplifications
+select = ["E", "F", "I", "B", "UP", "S", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["kb_core", "kb_api"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+"scripts/**" = ["S310"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["apps", "packages", "scripts"]
+explicit_package_bases = true
+mypy_path = ["apps/api/src", "packages/kb_core/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps", "packages"]
+addopts = "-q --import-mode=importlib"

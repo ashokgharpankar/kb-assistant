@@ -1,0 +1,91 @@
+variable "project" {
+  description = "Project name, used in resource names and the Project tag."
+  type        = string
+  default     = "kb-assistant"
+}
+
+variable "env" {
+  description = "Environment name."
+  type        = string
+  default     = "dev"
+}
+
+variable "owner" {
+  description = "Value for the Owner tag."
+  type        = string
+  default     = "ashok"
+}
+
+variable "region" {
+  description = "AWS region."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "alert_email" {
+  description = "Where budget and anomaly alerts are sent."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.alert_email))
+    error_message = "alert_email must be a valid email address."
+  }
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly spend ceiling for the whole account, before credits."
+  type        = number
+  default     = 15
+}
+
+variable "bedrock_budget_usd" {
+  description = "Monthly spend ceiling for Amazon Bedrock alone, before credits."
+  type        = number
+  default     = 5
+}
+
+variable "enable_project_tag_budget" {
+  description = <<-EOT
+    Create a budget filtered to the Project tag. Leave false on day one: AWS only
+    lets you activate a cost allocation tag after it has appeared in billing data,
+    which takes up to 24 hours after the first tagged resource exists.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "enable_anomaly_detection" {
+  description = <<-EOT
+    Create a Cost Anomaly Detection monitor. New accounts often already have a
+    default "AWS services" monitor and AWS allows only one of that type, so check
+    Billing > Cost Anomaly Detection in the console before setting this to true.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "anomaly_threshold_usd" {
+  description = "Alert when an anomaly's total impact is at least this many dollars."
+  type        = number
+  default     = 2
+}
+
+variable "bedrock_model_ids" {
+  description = "Foundation models the app may invoke. Nothing else is allowed."
+  type        = list(string)
+  default = [
+    "amazon.nova-micro-v1:0",
+    "amazon.nova-lite-v1:0",
+    "amazon.titan-embed-text-v2:0",
+  ]
+}
+
+variable "developer_principal_arn" {
+  description = <<-EOT
+    IAM principal allowed to assume the app role for local testing. Defaults to
+    the identity running Terraform, which is right when you log in as an IAM user.
+    Set it explicitly (to the IAM role ARN) if you log in through a federated role.
+  EOT
+  type        = string
+  default     = null
+}

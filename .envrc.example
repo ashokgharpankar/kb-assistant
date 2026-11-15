@@ -1,0 +1,5 @@
+# Copy to .envrc, then run `direnv allow`.
+# direnv sets these only while your shell is inside this folder, so this project's
+# AWS profile never leaks into your other terminals.
+export AWS_PROFILE=kb-dev
+export AWS_REGION=us-east-1

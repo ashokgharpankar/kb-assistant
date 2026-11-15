@@ -1,0 +1,46 @@
+# Runs on every `git commit`. Catches problems before they reach GitHub.
+# Update the pinned versions occasionally with: pre-commit autoupdate
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: detect-private-key
+
+  # "local" hooks use the tools already on your machine, so versions always
+  # match what `make lint` and CI run.
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (block committed secrets)
+        entry: gitleaks protect --staged --redact --no-banner
+        language: system
+        pass_filenames: false
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -check -recursive infra/terraform
+        language: system
+        files: \.tf$
+        pass_filenames: false

@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege for the workflow token. No AWS credentials are needed in Phase 0:
+# everything here is static checking. Deploy jobs (with OIDC) arrive in Phase 6.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+      - uses: terraform-linters/setup-tflint@v4
+      - run: terraform fmt -check -recursive infra/terraform
+      - name: validate bootstrap
+        run: |
+          terraform -chdir=infra/terraform/bootstrap init -backend=false -input=false
+          terraform -chdir=infra/terraform/bootstrap validate
+          tflint --chdir=infra/terraform/bootstrap
+      - name: validate dev
+        run: |
+          terraform -chdir=infra/terraform/envs/dev init -backend=false -input=false
+          terraform -chdir=infra/terraform/envs/dev validate
+          tflint --chdir=infra/terraform/envs/dev
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

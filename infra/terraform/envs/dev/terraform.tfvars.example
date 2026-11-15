@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+alert_email = "you@example.com"
+
+# Day 2, after the Project tag shows up under Billing > Cost allocation tags:
+# enable_project_tag_budget = true
+
+# Only if Billing > Cost Anomaly Detection shows no existing "AWS services" monitor:
+# enable_anomaly_detection = true

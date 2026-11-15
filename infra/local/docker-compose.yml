@@ -1,0 +1,27 @@
+# Local data stores for development. Start with: make up
+#
+# Postgres + pgvector is our local vector database. In AWS we will use S3 Vectors
+# instead; the code talks to both through one interface (Phase 1).
+name: kb-assistant
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: kb
+      POSTGRES_PASSWORD: kb_local_only   # local dev only, never reused anywhere real
+      POSTGRES_DB: kb
+    ports:
+      # Bound to localhost only. Host port 5433 because Langfuse's own Postgres takes 5432.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kb -d kb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

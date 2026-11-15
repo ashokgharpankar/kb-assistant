@@ -1,0 +1,18 @@
+{
+    "sourceFile": "packages/kb_core/tests/test_settings.py",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1794767273800,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1794767273800,
+            "name": "Commit-0",
+            "content": "import pytest\n\nfrom kb_core.settings import Settings\n\n\ndef test_defaults_are_free_and_local() -> None:\n    # A fresh clone must never call a paid API by accident.\n    s = Settings(_env_file=None)\n    assert s.llm_provider == \"ollama\"\n    assert s.env == \"local\"\n\n\ndef test_env_var_switches_provider(monkeypatch: pytest.MonkeyPatch) -> None:\n    monkeypatch.setenv(\"KB_LLM_PROVIDER\", \"bedrock\")\n    assert Settings(_env_file=None).llm_provider == \"bedrock\"\n\n\n\ndef test_embed_dimensions_read_from_env_string(monkeypatch: pytest.MonkeyPatch) -> None:\n    # Env vars are always strings. This is the case a .env file produces.\n    monkeypatch.setenv(\"KB_EMBED_DIMENSIONS\", \"1024\")\n    assert Settings(_env_file=None).embed_dimensions == 1024\n\n\ndef test_embed_dimensions_rejects_unsupported_size(monkeypatch: pytest.MonkeyPatch) -> None:\n    monkeypatch.setenv(\"KB_EMBED_DIMENSIONS\", \"300\")\n    with pytest.raises(ValueError):\n        Settings(_env_file=None)\n"
+        }
+    ]
+}
