@@ -19,6 +19,7 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 from psycopg import sql
+from psycopg_pool import ConnectionPool
 
 from kb_core.models import Chunk, RetrievedChunk, SourceDocument
 from kb_core.providers import EmbeddingSpace
@@ -37,17 +38,40 @@ class StoreStats:
 
 
 class PgVectorStore:
-    def __init__(self, database_url: str, space: EmbeddingSpace) -> None:
+    def __init__(self, database_url: str, space: EmbeddingSpace, pool_size: int = 5) -> None:
         self.dsn = _plain_dsn(database_url)
         self.space = space
         self.table = sql.Identifier(space.table_name)
         self.index = sql.Identifier(f"{space.table_name}_hnsw"[:63])
+        self.pool_size = pool_size
+        self._pool: ConnectionPool | None = None
+
+    def _configure(self, conn: psycopg.Connection) -> None:
+        register_vector(conn)
 
     @contextmanager
     def connect(self) -> Iterator[psycopg.Connection]:
-        with psycopg.connect(self.dsn) as conn:
-            register_vector(conn)
+        """Borrow a pooled connection.
+
+        Opening a new connection per query cost ~30-40 ms (TCP, auth, registering
+        the vector type); a pooled one is ready immediately. The pool opens lazily,
+        so the vector extension exists by the time the first connection is configured.
+        """
+        if self._pool is None:
+            self._pool = ConnectionPool(
+                self.dsn,
+                min_size=1,
+                max_size=self.pool_size,
+                configure=self._configure,
+                open=True,
+            )
+        with self._pool.connection() as conn:
             yield conn
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.close()
+            self._pool = None
 
     # --- schema --------------------------------------------------------------
 
@@ -207,6 +231,23 @@ class PgVectorStore:
             for r in rows
         ]
         return [r for r in results if r.similarity >= min_similarity]
+
+    def document_ids(self) -> list[str]:
+        """Documents ingested into this embedding space."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT document_id FROM kb_ingest_state WHERE space = %s ORDER BY 1",
+                (self.space.table_name,),
+            ).fetchall()
+        return [r[0] for r in rows]
+
+    def delete_document(self, document_id: str) -> bool:
+        """Remove a document everywhere: its chunks in every space go with it (ON DELETE CASCADE)."""
+        with self.connect() as conn:
+            deleted = conn.execute(
+                "DELETE FROM kb_documents WHERE document_id = %s", (document_id,)
+            ).rowcount
+        return deleted > 0
 
     def stats(self) -> StoreStats:
         with self.connect() as conn:

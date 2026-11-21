@@ -1,21 +1,9 @@
 {
-  "_comment": "Public AWS documents used as the knowledge base. Downloaded to data/raw/ by `make fetch-sources`; never committed. Content is (c) Amazon Web Services and used here for personal learning only.",
+  "_comment": "Public AWS documents used as the knowledge base. Downloaded to data/raw/ by `make fetch-sources`; never committed. Content is (c) Amazon Web Services and used here for personal learning only. Only the framework PDF: it covers all six pillars, and 42.5% of a sampled pillar PDF's chunks had a >0.90 near-duplicate in it (ADR 0009, docs/investigations/0001-retrieval-quality.md).",
   "sources": [
     {
       "id": "wellarchitected-framework",
       "url": "https://docs.aws.amazon.com/pdfs/wellarchitected/latest/framework/wellarchitected-framework.pdf"
-    },
-    {
-      "id": "wellarchitected-reliability-pillar",
-      "url": "https://docs.aws.amazon.com/pdfs/wellarchitected/latest/reliability-pillar/wellarchitected-reliability-pillar.pdf"
-    },
-    {
-      "id": "wellarchitected-security-pillar",
-      "url": "https://docs.aws.amazon.com/pdfs/wellarchitected/latest/security-pillar/wellarchitected-security-pillar.pdf"
-    },
-    {
-      "id": "wellarchitected-cost-optimization-pillar",
-      "url": "https://docs.aws.amazon.com/pdfs/wellarchitected/latest/cost-optimization-pillar/wellarchitected-cost-optimization-pillar.pdf"
     }
   ]
 }

@@ -8,7 +8,7 @@ as the code. Two views:
 
 ---
 
-## Current state: Phase 1 (fully local)
+## Current state: Phase 2a (fully local, streaming, traced)
 
 ```mermaid
 flowchart TB
@@ -27,15 +27,16 @@ flowchart TB
   subgraph Local["Local machine"]
     OL[(Ollama<br/>nomic-embed-text<br/>llama3.2)]
     PG[(Postgres + pgvector<br/>HNSW cosine index)]
+    LF[(Langfuse<br/>one trace per question)]
   end
 
-  subgraph Ask["kb ask / POST /ask"]
+  subgraph Ask["kb ask / POST /ask / POST /ask/stream (SSE)"]
     Q[Question] --> QE[Embed question]
     QE --> S[Top-k search<br/>similarity floor]
     S -- nothing relevant --> NF[Not found<br/>no model call]
     S -- chunks --> P[Prompt with<br/>numbered sources]
     P --> G[Generate]
-    G --> A[Answer + citations<br/>tokens + cost]
+    G -- tokens as written --> A[Answer + citations<br/>tokens, cost, TTFT]
   end
 
   PDF --> L
@@ -45,6 +46,7 @@ flowchart TB
   QE <--> OL
   S <--> PG
   G <--> OL
+  Ask -. retrieve + generate spans .-> LF
 ```
 
 ### Ask: sequence
@@ -64,14 +66,21 @@ sequenceDiagram
   EM-->>R: vector (768)
   R->>DB: ORDER BY embedding <=> vector LIMIT k
   DB-->>R: chunks + similarity
+  R-->>API: event: sources
   alt no chunk above the similarity floor
-    R-->>API: "not found" (no model call, $0)
+    R-->>API: event: done ("not found", no model call, $0)
   else
-    R->>LLM: system rules + sources in user message
-    LLM-->>R: answer with [n] markers + token usage
-    R-->>API: answer, citations, tokens, cost
+    R->>LLM: system rules + escaped sources in user message
+    loop as the model writes
+      LLM-->>R: token
+      R-->>API: event: token
+      API-->>U: token (streamed)
+    end
+    LLM-->>R: token usage (last chunk)
+    R-->>API: event: done (citations, tokens, cost, TTFT)
   end
-  API-->>U: response
+  API-->>U: done
+  Note over R: Langfuse trace: rag.answer > retrieve, generate
 ```
 
 ### Data model

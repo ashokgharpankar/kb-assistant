@@ -55,3 +55,46 @@ def test_fingerprint_changes_with_text_or_settings() -> None:
     assert base == content_fingerprint(_doc(LONG), 400, 80)
     assert base != content_fingerprint(_doc(LONG + " More."), 400, 80)
     assert base != content_fingerprint(_doc(LONG), 500, 80)
+
+
+# --- reference lists (the "shuffle-sharding [3]" citation) --------------------
+
+from kb_core.chunking import is_reference_list  # noqa: E402
+
+REFERENCE_CHUNK = """• Shuffle-sharding: AWS re:Invent 2019: Introducing The Amazon Builders' Library (DOP328)
+• AWS Summit ANZ 2021 - Everything fails, all the time: Designing for resilience
+• Related videos:
+• AWS re:Invent 2022 - Building resilient architectures"""
+
+GUIDANCE_CHUNK = """Implementation steps
+• Identify the critical components of the workload.
+• Define RTO and RPO for each component.
+• Deploy across multiple Availability Zones.
+• Test failover regularly with game days."""
+
+
+def test_reference_lists_are_recognised() -> None:
+    assert is_reference_list(REFERENCE_CHUNK)
+
+
+def test_guidance_bullets_are_not_reference_lists() -> None:
+    assert not is_reference_list(GUIDANCE_CHUNK)
+
+
+def test_prose_that_mentions_reinvent_is_kept() -> None:
+    prose = "As discussed at AWS re:Invent, cells limit blast radius. Each cell serves a subset of customers."
+    assert not is_reference_list(prose)
+
+
+def test_reference_list_chunks_are_not_indexed() -> None:
+    doc = SourceDocument(
+        "doc",
+        "Doc",
+        "file:///doc",
+        (
+            Section("Resources", REFERENCE_CHUNK, ((0, 1),)),
+            Section("Guide", GUIDANCE_CHUNK, ((0, 2),)),
+        ),
+    )
+    chunks = chunk_document(doc, chunk_size=1200, chunk_overlap=100)
+    assert [c.section for c in chunks] == ["Guide"]

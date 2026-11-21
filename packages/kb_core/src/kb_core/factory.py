@@ -6,13 +6,16 @@ from kb_core.providers import chat_model_id, embedding_space, get_chat_model, ge
 from kb_core.rag import RagPipeline
 from kb_core.settings import Settings
 from kb_core.store import PgVectorStore
+from kb_core.tracing import Tracer, build_tracer
 
 
 def build_store(settings: Settings) -> PgVectorStore:
     return PgVectorStore(settings.database_url, embedding_space(settings))
 
 
-def build_pipeline(settings: Settings, store: PgVectorStore | None = None) -> RagPipeline:
+def build_pipeline(
+    settings: Settings, store: PgVectorStore | None = None, tracer: Tracer | None = None
+) -> RagPipeline:
     store = store or build_store(settings)
     return RagPipeline(
         search=store.search,
@@ -21,4 +24,5 @@ def build_pipeline(settings: Settings, store: PgVectorStore | None = None) -> Ra
         model_id=chat_model_id(settings),
         k=settings.retrieval_k,
         min_similarity=settings.min_similarity,
+        tracer=tracer or build_tracer(settings),
     )

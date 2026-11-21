@@ -10,7 +10,7 @@ from pathlib import Path
 from langchain_core.embeddings import Embeddings
 
 from kb_core.chunking import chunk_document, content_fingerprint
-from kb_core.loaders import discover, load_file
+from kb_core.loaders import discover, document_id_for, load_file
 from kb_core.store import PgVectorStore
 
 # Embedding calls are batched: one request per batch instead of one per chunk.
@@ -30,6 +30,7 @@ class DocumentResult:
 @dataclass
 class IngestReport:
     results: list[DocumentResult] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
 
     @property
     def ingested(self) -> int:
@@ -69,9 +70,20 @@ def ingest_path(
     chunk_overlap: int,
     force: bool = False,
     on_progress: Callable[[DocumentResult], None] | None = None,
+    prune: bool = False,
 ) -> IngestReport:
+    """Ingest every supported file under `root`.
+
+    With `prune`, documents in the store whose file is no longer under `root`
+    are deleted, so the index matches the folder.
+    """
+    if prune and not root.is_dir():
+        # Pruning against a single file would delete every other document.
+        raise ValueError("prune needs a folder: it deletes documents not found in that folder")
     report = IngestReport()
+    seen: set[str] = set()
     for path in discover(root):
+        seen.add(document_id_for(path))
         started = time.perf_counter()
         try:
             doc = load_file(path)
@@ -91,4 +103,9 @@ def ingest_path(
         report.results.append(result)
         if on_progress:
             on_progress(result)
+
+    if prune:
+        for document_id in store.document_ids():
+            if document_id not in seen and store.delete_document(document_id):
+                report.removed.append(document_id)
     return report

@@ -82,3 +82,29 @@ class Answer:
     cost_usd: Decimal = Decimal(0)
     retrieved: list[RetrievedChunk] = field(default_factory=list)
     answered_from_context: bool = True
+    # Latency, in milliseconds. Time to first token is what a user feels when streaming.
+    retrieval_ms: float = 0.0
+    time_to_first_token_ms: float | None = None
+    total_ms: float = 0.0
+
+
+# --- streaming events ----------------------------------------------------------
+# The pipeline yields these in order: Sources once, Token many times, Done once.
+
+
+@dataclass(frozen=True)
+class SourcesEvent:
+    retrieved: list[RetrievedChunk]
+
+
+@dataclass(frozen=True)
+class TokenEvent:
+    text: str
+
+
+@dataclass(frozen=True)
+class DoneEvent:
+    answer: Answer
+
+
+StreamEvent = SourcesEvent | TokenEvent | DoneEvent

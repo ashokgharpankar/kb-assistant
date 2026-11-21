@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
@@ -7,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from kb_core.models import Chunk, RetrievedChunk
 from kb_core.rag import NOT_FOUND, RagPipeline, build_messages, extract_citations
 
-from .conftest import WordHashEmbeddings
+from .conftest import WordHashEmbeddings, fake_model
 
 
 def _hit(n: int, text: str = "Deploy across multiple Availability Zones.") -> RetrievedChunk:
@@ -20,12 +21,11 @@ def _hit(n: int, text: str = "Deploy across multiple Availability Zones.") -> Re
 
 
 def _model(reply: str) -> GenericFakeChatModel:
-    usage = {"input_tokens": 1000, "output_tokens": 100, "total_tokens": 1100}
-    return GenericFakeChatModel(messages=iter([AIMessage(content=reply, usage_metadata=usage)]))
+    return fake_model(reply)
 
 
 class ExplodingModel(GenericFakeChatModel):
-    def invoke(self, *args: object, **kwargs: object) -> AIMessage:
+    def stream(self, *args: object, **kwargs: object) -> Iterator[AIMessage]:  # type: ignore[override]
         raise AssertionError("the model must not be called")
 
 

@@ -11,11 +11,16 @@ import hashlib
 import math
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 import pytest
 from langchain_core.embeddings import Embeddings
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.outputs import ChatGenerationChunk
 
 DIMS = 64
 _WORD = re.compile(r"[a-z]{3,}")
@@ -35,6 +40,34 @@ class WordHashEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> list[float]:
         return self._embed(text)
+
+
+class StreamingFakeChatModel(GenericFakeChatModel):
+    """Streams word by word, then reports token usage on a final empty chunk,
+    the way Ollama and Bedrock do. (The stock fake drops usage when streaming.)"""
+
+    usage: dict[str, int] = {}
+
+    def _stream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatGenerationChunk]:
+        yield from super()._stream(messages, stop=stop, run_manager=run_manager, **kwargs)
+        if self.usage:
+            usage = {**self.usage, "total_tokens": sum(self.usage.values())}
+            yield ChatGenerationChunk(message=AIMessageChunk(content="", usage_metadata=usage))
+
+
+def fake_model(
+    reply: str, input_tokens: int = 1000, output_tokens: int = 100
+) -> StreamingFakeChatModel:
+    return StreamingFakeChatModel(
+        messages=iter([AIMessage(content=reply)]),
+        usage={"input_tokens": input_tokens, "output_tokens": output_tokens},
+    )
 
 
 @pytest.fixture

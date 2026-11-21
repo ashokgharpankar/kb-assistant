@@ -24,6 +24,7 @@ dev = [
     "pytest>=8.3",
     "httpx>=0.28",
     "boto3-stubs[bedrock-runtime,sts]>=1.42",
+    "pytest-cov>=6",
 ]
 
 [tool.ruff]
@@ -60,3 +61,14 @@ filterwarnings = [
     # PyMuPDF's SWIG bindings; harmless, not our code.
     "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
 ]
+
+[tool.coverage.run]
+source = ["kb_core", "kb_api"]
+branch = true
+# Paths in coverage.xml are relative to the repo root, which is what SonarQube expects.
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = ["if __name__ == .__main__.:", "if TYPE_CHECKING:"]

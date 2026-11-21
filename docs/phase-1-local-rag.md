@@ -144,7 +144,7 @@ make fetch-sources
 ls -lh data/raw/
 ```
 
-This downloads four AWS Well-Architected PDFs (the framework plus the Reliability, Security and Cost Optimization pillars). If a URL has moved, the script prints FAILED for that file; find the current PDF link on the AWS Well-Architected documentation page and update `data/sources.json`.
+This downloads the AWS Well-Architected framework PDF, which covers all six pillars. (The separate pillar PDFs were dropped after measuring heavy overlap: see ADR 0009 and investigation 0001.) If a URL has moved, the script prints FAILED for that file; find the current PDF link on the AWS Well-Architected documentation page and update `data/sources.json`.
 
 Add your own runbooks as `.md` files in `data/raw/` too. They're loaded the same way.
 
@@ -281,6 +281,8 @@ CI now starts a pgvector container and runs the integration tests too.
 | Context placement | User message, tagged, "data not instructions" | System prompt | Reduces prompt injection from documents |
 | Untrusted text | Escaped before entering the prompt | Inserted raw | Blocks tag break-out from documents and questions |
 | Embedding batching | 32 per call | One call per chunk | Far fewer round-trips; on Bedrock, fewer throttles |
+
+**Data quality:** a measured investigation of the first ingest found ligatures, page headers, table-of-contents text and reference lists in the index. Fixes and evidence: [investigation 0001](investigations/0001-retrieval-quality.md), [ADR 0009](adr/0009-knowledge-base-sources-and-cleaning.md). Re-run `make data-quality` after any change to loaders or sources.
 
 **Known gaps, fixed later:** near-duplicate chunks can fill all 4 slots (Phase 4 adds diversity and reranking); no keyword search, so exact terms like "SCP" can miss (Phase 4); scores and chunk size are guesses (Phase 3); no streaming (Phase 2).
 

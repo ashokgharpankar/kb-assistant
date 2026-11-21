@@ -3,8 +3,8 @@ TF_BOOT := infra/terraform/bootstrap
 TF_DEV  := infra/terraform/envs/dev
 
 .DEFAULT_GOAL := help
-.PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration api \
-        smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats \
+.PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
+        smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
         tf-bootstrap tf-init tf-plan tf-apply tf-check
 
 help: ## Show this help
@@ -51,6 +51,11 @@ test-integration: ## Run all tests, including those that need local Postgres (ma
 		docker compose -f infra/local/docker-compose.yml exec -T postgres createdb -U kb kb_test
 	KB_TEST_DATABASE_URL=postgresql://kb:kb_local_only@localhost:5433/kb_test uv run pytest
 
+coverage: ## Tests with coverage (incl. integration); HTML report in htmlcov/
+	KB_TEST_DATABASE_URL=postgresql://kb:kb_local_only@localhost:5433/kb_test \
+		uv run pytest --cov --cov-report=term --cov-report=html --cov-report=xml
+	@echo "Open htmlcov/index.html for line-by-line coverage"
+
 api: ## Run the API locally on :8000
 	uv run uvicorn kb_api.main:app --reload --port 8000
 
@@ -68,6 +73,14 @@ ask: ## Ask a question: make ask Q="What is the Reliability pillar?"
 
 stats: ## Show documents and chunks stored
 	uv run kb stats
+
+PSQL := docker compose -f infra/local/docker-compose.yml exec -T postgres psql -U kb -d kb -q
+
+data-quality: ## Data-quality report on the ingested chunks (ligatures, headers, ToC, references)
+	@$(PSQL) < scripts/sql/data_quality.sql
+
+duplicates: ## Overlap between two documents: make duplicates A=<doc_id> B=<doc_id>
+	@$(PSQL) -v a=$(A) -v b=$(B) < scripts/sql/duplicates.sql
 
 smoke-ollama: ## Check local models respond (free)
 	uv run python scripts/smoke_ollama.py

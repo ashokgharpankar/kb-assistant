@@ -42,8 +42,8 @@ Run `make` to list every command.
 |---|---|---|
 | 0 | Setup, FinOps guardrails, least-privilege IAM | Done |
 | 1 | RAG with citations, fully local | Done |
-| 1.5 | Quality gate: SonarQube Cloud, coverage, Dependabot | Next |
-| 2 | Bedrock, streaming API, React UI with Cognito sign-in | |
+| 1.5 | Quality gate: coverage, Dependabot (SonarQube Cloud ready, switched on later) | Done |
+| 2 | Bedrock, streaming API, React UI with Cognito sign-in | Next |
 | 3 | Evaluation harness | |
 | 4 | Hybrid search, reranking, more sources | |
 | 5 | MCP server and LangGraph agent (ADR: LangGraph vs CrewAI) | |
@@ -55,6 +55,9 @@ Run `make` to list every command.
 
 - [Phase 0 guide](docs/phase-0-setup.md)
 - [Phase 1 guide](docs/phase-1-local-rag.md)
+- [Phase 1.5 guide](docs/phase-1_5-quality-gate.md)
+- [Phase 2a guide](docs/phase-2a-streaming-tracing.md)
 - [Architecture](docs/architecture/README.md)
+- [Investigations](docs/investigations/) (how problems were diagnosed)
 - [Architecture decision records](docs/adr/)
 - [Build log](docs/build-log.md)
