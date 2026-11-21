@@ -1,7 +1,7 @@
 [project]
 name = "kb-core"
 version = "0.1.0"
-description = "Shared library: settings, pricing, and (from Phase 1) the RAG pipeline"
+description = "Shared library: settings, pricing, loaders, chunking, vector store and the RAG pipeline"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pydantic>=2.9",
@@ -9,7 +9,20 @@ dependencies = [
     # >=1.42.21 + awscrt>=0.30 are needed for `aws login` credentials to auto-refresh
     "boto3>=1.42.21",
     "awscrt>=0.30.0",
+    "langchain-core>=1.0",
+    "langchain-text-splitters>=1.0",
+    "langchain-ollama>=1.0",
+    "langchain-aws>=1.0",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.4",
+    "pymupdf>=1.26",
+    "typer>=0.15",
+    "httpx>=0.28",
+    "numpy>=2",
 ]
+
+[project.scripts]
+kb = "kb_core.cli:app"
 
 [build-system]
 requires = ["hatchling"]

@@ -27,7 +27,11 @@ infra/local/langfuse/
 
 # OS / editor
 .DS_Store
+.lh/
 .idea/
 .vscode/*
 !.vscode/extensions.json
 node_modules/
+
+# Downloaded source documents (licensed by their publishers; never committed)
+data/raw/

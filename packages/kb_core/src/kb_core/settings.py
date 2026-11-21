@@ -43,6 +43,18 @@ class Settings(BaseSettings):
             raise ValueError("embed_dimensions must be 256, 512 or 1024")
         return value
 
+    # --- ingestion and retrieval (Phase 1) -----------------------------------
+    data_dir: str = "data/raw"
+    # Characters, not tokens: about 4 characters per token for English, so
+    # 1200 characters is roughly 300 tokens. See docs/adr/0004-chunking-strategy.md
+    chunk_size: int = Field(default=1200, ge=200, le=8000)
+    chunk_overlap: int = Field(default=200, ge=0, le=2000)
+    retrieval_k: int = Field(default=4, ge=1, le=20)
+    # Cosine similarity below this is treated as "not relevant". A starting guess:
+    # watch real scores with `kb search`, then calibrate properly in Phase 3.
+    min_similarity: float = Field(default=0.4, ge=0.0, le=1.0)
+    answer_max_tokens: int = Field(default=600, ge=50, le=4000)
+
     # --- data stores ---------------------------------------------------------
     database_url: str = Field(
         default="postgresql+psycopg://kb:kb_local_only@localhost:5433/kb",

@@ -3,8 +3,9 @@ TF_BOOT := infra/terraform/bootstrap
 TF_DEV  := infra/terraform/envs/dev
 
 .DEFAULT_GOAL := help
-.PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test api \
-        smoke-ollama smoke-bedrock tf-bootstrap tf-init tf-plan tf-apply tf-check
+.PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration api \
+        smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats \
+        tf-bootstrap tf-init tf-plan tf-apply tf-check
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -41,11 +42,32 @@ fmt: ## Auto-format and auto-fix
 	uv run ruff format .
 	terraform fmt -recursive infra/terraform
 
-test: ## Run unit tests
+test: ## Run unit tests (integration tests skip without a database)
 	uv run pytest
+
+test-integration: ## Run all tests, including those that need local Postgres (make up)
+	@docker compose -f infra/local/docker-compose.yml exec -T postgres \
+		psql -U kb -d kb -tc "SELECT 1 FROM pg_database WHERE datname = 'kb_test'" | grep -q 1 || \
+		docker compose -f infra/local/docker-compose.yml exec -T postgres createdb -U kb kb_test
+	KB_TEST_DATABASE_URL=postgresql://kb:kb_local_only@localhost:5433/kb_test uv run pytest
 
 api: ## Run the API locally on :8000
 	uv run uvicorn kb_api.main:app --reload --port 8000
+
+fetch-sources: ## Download the knowledge-base PDFs into data/raw/
+	uv run python scripts/fetch_sources.py
+
+init-db: ## Create tables and indexes for the current embedding space
+	uv run kb init-db
+
+ingest: ## Load, chunk, embed and store everything in data/raw/ (skips unchanged)
+	uv run kb ingest
+
+ask: ## Ask a question: make ask Q="What is the Reliability pillar?"
+	uv run kb ask "$(Q)"
+
+stats: ## Show documents and chunks stored
+	uv run kb stats
 
 smoke-ollama: ## Check local models respond (free)
 	uv run python scripts/smoke_ollama.py
