@@ -14,6 +14,7 @@ decision gets a new ADR that supersedes the old one.
 | [0007](0007-model-provider-abstraction.md) | Model provider abstraction | 2 | Accepted |
 | [0008](0008-streaming-responses-sse.md) | Streaming responses over SSE | 2 | Accepted |
 | [0009](0009-knowledge-base-sources-and-cleaning.md) | Knowledge-base sources and ingestion cleaning | 1 | Accepted |
+| [0020](0020-web-ui.md) | Web UI: Vite + React, same-origin API, model output as text | 2 | Accepted |
 | 0010 | Evaluation framework and quality thresholds | 3 | Planned |
 | 0011 | Hybrid search and reranking | 4 | Planned |
 | 0012 | MCP server boundaries | 5 | Planned |
@@ -24,5 +25,8 @@ decision gets a new ADR that supersedes the old one.
 | 0017 | Guardrails and prompt-injection handling | 7 | Planned |
 | 0018 | Caching strategy | 8 | Planned |
 | 0019 | Model routing by cost and quality | 8 | Planned |
+
+Numbers are identifiers, not phase order: planned numbers are reserved, so a
+decision that comes up mid-phase takes the next free number.
 
 Template: Status · Context · Decision · Why (with rejected options) · Consequences.

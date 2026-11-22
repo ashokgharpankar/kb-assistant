@@ -8,12 +8,12 @@ as the code. Two views:
 
 ---
 
-## Current state: Phase 2a (fully local, streaming, traced)
+## Current state: Phase 2b (fully local, streaming, traced, web UI)
 
 ```mermaid
 flowchart TB
   subgraph Sources
-    PDF[Well-Architected PDFs]
+    PDF[Well-Architected<br/>Framework PDF]
     MD[Runbooks .md]
   end
 
@@ -30,6 +30,10 @@ flowchart TB
     LF[(Langfuse<br/>one trace per question)]
   end
 
+  subgraph Web["Browser"]
+    UI[React UI<br/>apps/web] -- "fetch POST /api/ask/stream<br/>read SSE from the body" --> VP[Vite dev proxy<br/>/api → :8000]
+  end
+
   subgraph Ask["kb ask / POST /ask / POST /ask/stream (SSE)"]
     Q[Question] --> QE[Embed question]
     QE --> S[Top-k search<br/>similarity floor]
@@ -39,6 +43,7 @@ flowchart TB
     G -- tokens as written --> A[Answer + citations<br/>tokens, cost, TTFT]
   end
 
+  VP --> Q
   PDF --> L
   MD --> L
   E <--> OL
@@ -54,32 +59,40 @@ flowchart TB
 ```mermaid
 sequenceDiagram
   actor U as User
-  participant API as CLI / FastAPI
+  participant UI as React UI
+  participant API as FastAPI
   participant R as RagPipeline
   participant EM as Embeddings
   participant DB as pgvector
   participant LLM as Chat model
 
-  U->>API: question
-  API->>R: answer(question)
+  U->>UI: question (Enter)
+  UI->>API: POST /api/ask/stream (via Vite proxy)
+  API->>R: stream(question)
   R->>EM: embed_query("search_query: " + question)
   EM-->>R: vector (768)
   R->>DB: ORDER BY embedding <=> vector LIMIT k
   DB-->>R: chunks + similarity
-  R-->>API: event: sources
+  R-->>API: sources
+  API-->>UI: event: sources (section, page, similarity, excerpt)
   alt no chunk above the similarity floor
-    R-->>API: event: done ("not found", no model call, $0)
+    R-->>API: done ("not found", no model call, $0)
   else
     R->>LLM: system rules + escaped sources in user message
     loop as the model writes
       LLM-->>R: token
-      R-->>API: event: token
-      API-->>U: token (streamed)
+      R-->>API: token
+      API-->>UI: event: token (rendered as it arrives)
+      opt user clicks Stop or closes the tab
+        UI--xAPI: connection closed (AbortController)
+        API->>R: close(): model stream ends, spans close
+      end
     end
     LLM-->>R: token usage (last chunk)
-    R-->>API: event: done (citations, tokens, cost, TTFT)
+    R-->>API: done (citations, tokens, cost, TTFT)
   end
-  API-->>U: done
+  API-->>UI: event: done
+  UI-->>U: answer, clickable citations, cited/uncited sources, metrics
   Note over R: Langfuse trace: rag.answer > retrieve, generate
 ```
 

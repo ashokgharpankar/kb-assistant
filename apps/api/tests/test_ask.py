@@ -83,6 +83,7 @@ def test_stream_sends_sources_tokens_then_done(monkeypatch) -> None:  # type: ig
             "section": "Reliability",
             "page": 12,
             "similarity": 0.8123,
+            "excerpt": "Use AZs.",
         }
     ]
     # a newline inside a token survives the SSE framing
@@ -102,3 +103,42 @@ def test_stream_failure_becomes_an_error_event(monkeypatch) -> None:  # type: ig
     events = parse_sse(body)
     assert events[-1] == ("error", {"detail": "answering is temporarily unavailable"})
     assert "10.0.0.5" not in body  # internals never reach the client
+
+
+def test_excerpt_is_one_line_and_cut_at_a_word() -> None:
+    assert main.excerpt("Use\n  multiple   AZs.") == "Use multiple AZs."
+    long = "word " * 100
+    cut = main.excerpt(long, limit=22)
+    assert cut == "word word word word…"
+    assert len(cut) <= 23
+
+
+def test_generation_stops_when_the_client_disconnects() -> None:
+    import asyncio
+
+    produced: list[int] = []
+    closed: list[bool] = []
+
+    def events() -> Iterator[str]:
+        try:
+            for i in range(100):
+                produced.append(i)
+                yield f"token {i}"
+        finally:
+            closed.append(True)
+
+    class Request:
+        def __init__(self) -> None:
+            self.checks = 0
+
+        async def is_disconnected(self) -> bool:
+            self.checks += 1
+            return self.checks > 2  # the browser leaves after two events
+
+    async def consume() -> list[str]:
+        return [chunk async for chunk in main.stop_on_disconnect(Request(), events())]
+
+    received = asyncio.run(consume())
+    assert received == ["token 0", "token 1"]
+    assert len(produced) < 100  # the model did not run to the end
+    assert closed == [True]  # cleanup ran, so tracing spans close

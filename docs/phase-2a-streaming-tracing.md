@@ -204,4 +204,4 @@ Working on a branch with a PR is a good habit now, even solo: CI runs on the PR 
 - [ ] Langfuse traces visible; one with and one without a `generate` step
 - [ ] Merged through a PR with CI green
 
-**Next: Phase 2b.** A React UI that consumes `/ask/stream`: chat box, answer appearing live, clickable citations.
+**Next: [Phase 2b](phase-2b-web-ui.md).** A React UI that consumes `/ask/stream`: chat box, answer appearing live, clickable citations.

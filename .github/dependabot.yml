@@ -16,6 +16,18 @@ updates:
         update-types: ["minor", "patch"]
     open-pull-requests-limit: 5
 
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 5
+    groups:
+      web-minor-and-patch:
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
