@@ -5,6 +5,7 @@ TF_DEV  := infra/terraform/envs/dev
 .DEFAULT_GOAL := help
 .PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
+        web-setup web-dev web-demo web-lint web-test web-build \
         tf-bootstrap tf-init tf-plan tf-apply tf-check
 
 help: ## Show this help
@@ -13,8 +14,9 @@ help: ## Show this help
 doctor: ## Check that all required tools are installed
 	@./scripts/doctor.sh
 
-setup: ## Install Python deps and git hooks
+setup: ## Install Python and web deps, and git hooks
 	uv sync
+	npm --prefix apps/web ci
 	pre-commit install
 	@test -f .env || cp .env.example .env
 	@test -f .envrc || cp .envrc.example .envrc
@@ -58,6 +60,26 @@ coverage: ## Tests with coverage (incl. integration); HTML report in htmlcov/
 
 api: ## Run the API locally on :8000
 	uv run uvicorn kb_api.main:app --reload --port 8000
+
+web-setup: ## Install the web UI's dependencies (exact versions from package-lock.json)
+	npm --prefix apps/web ci
+
+web-dev: ## Run the web UI on :5173 (needs `make api` or `make web-demo` running)
+	npm --prefix apps/web run dev
+
+web-demo: ## Run the API with a scripted answer on :8000 (no Ollama or database needed)
+	uv run python scripts/demo_api.py
+
+web-lint: ## Prettier, oxlint and TypeScript checks for the web UI
+	npm --prefix apps/web run format:check
+	npm --prefix apps/web run lint
+	npm --prefix apps/web run typecheck
+
+web-test: ## Web UI tests with coverage
+	npm --prefix apps/web run coverage
+
+web-build: ## Production build of the web UI into apps/web/dist
+	npm --prefix apps/web run build
 
 fetch-sources: ## Download the knowledge-base PDFs into data/raw/
 	uv run python scripts/fetch_sources.py

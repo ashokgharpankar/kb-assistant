@@ -10,6 +10,7 @@ dependencies = []
 # packages/* -> shared libraries the apps import
 [tool.uv.workspace]
 members = ["apps/*", "packages/*"]
+exclude = ["apps/web"]  # the React app is not a Python package
 
 [tool.uv.sources]
 kb-core = { workspace = true }
