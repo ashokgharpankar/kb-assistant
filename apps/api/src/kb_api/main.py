@@ -1,7 +1,12 @@
 """API entry point.
 
-POST /ask         one JSON response when the answer is complete
-POST /ask/stream  Server-Sent Events: sources, then tokens as they're written, then done
+GET  /health      open: liveness, version, provider, auth mode
+POST /ask         signed in: one JSON response when the answer is complete
+POST /ask/stream  signed in: Server-Sent Events: sources, tokens as they're written, done
+
+Endpoints receive what they need through FastAPI dependencies (Depends): the
+pipeline, the signed-in user. Tests and the demo swap them with
+app.dependency_overrides, without touching module globals.
 """
 
 from __future__ import annotations
@@ -9,26 +14,38 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Any, Protocol
+from typing import Annotated, Any, Protocol
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool
 
 from kb_core import __version__
 from kb_core.factory import build_pipeline
-from kb_core.models import Answer, DoneEvent, SourcesEvent, TokenEvent
-from kb_core.rag import RagPipeline
+from kb_core.models import Answer, DoneEvent, SourcesEvent, StreamEvent, TokenEvent
 from kb_core.settings import get_settings
+
+from .auth import CurrentUser, get_verifier
 
 # Our own log lines (errors, early stops) next to uvicorn's. No-op if logging is
 # already configured, for example by a production log setup.
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 log = logging.getLogger("kb_api")
 
-app = FastAPI(title="KB Assistant API", version=__version__)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Fail at startup, not on the first request: Cognito switched on but not
+    # configured stops the server with a clear message.
+    verifier = get_verifier()
+    log.info("auth: %s", "cognito" if verifier else "DISABLED (local only)")
+    yield
+
+
+app = FastAPI(title="KB Assistant API", version=__version__, lifespan=lifespan)
 
 
 class Health(BaseModel):
@@ -36,6 +53,7 @@ class Health(BaseModel):
     version: str
     env: str
     llm_provider: str
+    auth: str
 
 
 class AskRequest(BaseModel):
@@ -62,20 +80,33 @@ class AskResponse(BaseModel):
     total_ms: float = 0.0
 
 
+class Pipeline(Protocol):
+    """What the endpoints need from a pipeline. RagPipeline fits; so do test fakes."""
+
+    def stream(self, question: str) -> Iterator[StreamEvent]: ...
+
+    def answer(self, question: str) -> Answer: ...
+
+
 @lru_cache
-def get_pipeline() -> RagPipeline:
-    return build_pipeline(get_settings())
+def get_pipeline() -> Pipeline:
+    return build_pipeline(get_settings())  # built once: model clients, DB pool
 
 
 def provider_label() -> str:
-    """What /health reports as the model provider (the demo script overrides it)."""
+    """What /health reports as the model provider (the demo overrides it)."""
     return get_settings().llm_provider
 
 
+PipelineDep = Annotated[Pipeline, Depends(get_pipeline)]
+
+
 @app.get("/health")
-def health() -> Health:
+def health(provider: Annotated[str, Depends(provider_label)]) -> Health:
     s = get_settings()
-    return Health(status="ok", version=__version__, env=s.env, llm_provider=provider_label())
+    return Health(
+        status="ok", version=__version__, env=s.env, llm_provider=provider, auth=s.auth_mode
+    )
 
 
 def to_response(answer: Answer) -> AskResponse:
@@ -102,9 +133,10 @@ def to_response(answer: Answer) -> AskResponse:
 
 
 @app.post("/ask")
-def ask(request: AskRequest) -> AskResponse:
+def ask(body: AskRequest, pipeline: PipelineDep, user: CurrentUser) -> AskResponse:
+    log.info("ask user=%s", user.sub)
     try:
-        answer = get_pipeline().answer(request.question)
+        answer = pipeline.answer(body.question)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
@@ -130,9 +162,9 @@ def sse(event: str, data: Any) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def event_stream(question: str) -> Iterator[str]:
+def event_stream(pipeline: Pipeline, question: str) -> Iterator[str]:
     try:
-        for event in get_pipeline().stream(question):
+        for event in pipeline.stream(question):
             if isinstance(event, SourcesEvent):
                 yield sse(
                     "sources",
@@ -189,9 +221,14 @@ async def stop_on_disconnect(request: Disconnectable, events: Iterator[str]) -> 
 
 
 @app.post("/ask/stream")
-def ask_stream(body: AskRequest, request: Request) -> StreamingResponse:
+def ask_stream(
+    body: AskRequest, request: Request, pipeline: PipelineDep, user: CurrentUser
+) -> StreamingResponse:
+    # The token is checked before the first byte is sent, so a bad token is a
+    # plain 401, not an error event inside a 200 stream.
+    log.info("ask/stream user=%s", user.sub)
     return StreamingResponse(
-        stop_on_disconnect(request, event_stream(body.question)),
+        stop_on_disconnect(request, event_stream(pipeline, body.question)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

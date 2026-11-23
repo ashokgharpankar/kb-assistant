@@ -61,6 +61,15 @@ class Settings(BaseSettings):
         description="Local pgvector. Port 5433 so it never clashes with Langfuse's Postgres.",
     )
 
+    # --- authentication (Phase 2c) --------------------------------------------
+    # "cognito": the API rejects requests without a valid Cognito access token.
+    # "disabled": no sign-in; only for tests and the demo, never for a deployed API.
+    # The default is the safe one: a missing setting can't silently open the API.
+    auth_mode: Literal["cognito", "disabled"] = "cognito"
+    # From `terraform output` (Phase 2c). The region is aws_region above.
+    cognito_user_pool_id: str | None = None
+    cognito_client_id: str | None = None
+
     # --- observability -------------------------------------------------------
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str | None = None

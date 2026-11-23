@@ -2,12 +2,16 @@
 
 For UI work and demos:  make web-demo   (API on :8000, then `make web-dev`)
 
+Sign-in is off by default here. To test the sign-in flow without Ollama, run
+`KB_AUTH_MODE=cognito make web-demo` (Cognito values from .env).
+
 The answer is streamed word by word with a short delay, so the UI behaves as it
 does with a real model. Ask anything containing "weather" to see the not-found path.
 """
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Iterator
 
@@ -106,6 +110,10 @@ class DemoPipeline:
 
 
 if __name__ == "__main__":
-    main.get_pipeline = lambda: DemoPipeline()  # type: ignore[assignment]
-    main.provider_label = lambda: "demo"  # the UI's header pill shows "demo"
+    # An environment variable beats .env, so this turns sign-in off for the demo
+    # unless you exported KB_AUTH_MODE yourself.
+    os.environ.setdefault("KB_AUTH_MODE", "disabled")
+    # Swap the real dependencies for demo ones, the same way the tests do.
+    main.app.dependency_overrides[main.get_pipeline] = DemoPipeline
+    main.app.dependency_overrides[main.provider_label] = lambda: "demo"
     uvicorn.run(main.app, host="127.0.0.1", port=8000)

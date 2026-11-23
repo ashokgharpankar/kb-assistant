@@ -246,5 +246,5 @@ output, and server-side cancellation that stops token spend when users abandon a
 - [ ] `make web-build` produces `apps/web/dist`
 - [ ] Merged through a PR with all four CI jobs green
 
-**Next: Phase 2c.** Cognito sign-in (Terraform), token checks in the API, the
+**Next: [Phase 2c](phase-2c-cognito.md).** Cognito sign-in (Terraform), token checks in the API, the
 `Authorization` header in `askStream()`, and the switch to Bedrock once the quota is raised.

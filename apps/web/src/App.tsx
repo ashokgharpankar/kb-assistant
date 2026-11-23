@@ -5,6 +5,7 @@ import { Metrics } from './components/Metrics'
 import { SourceList } from './components/SourceList'
 import { isBusy, useAsk } from './hooks/useAsk'
 import { getHealth } from './lib/api'
+import type { Session } from './lib/auth'
 import type { Health } from './lib/types'
 
 const STATUS_TEXT: Partial<Record<string, string>> = {
@@ -13,8 +14,13 @@ const STATUS_TEXT: Partial<Record<string, string>> = {
   stopped: 'Stopped.',
 }
 
-export default function App() {
-  const { state, ask, stop } = useAsk()
+interface Props {
+  /** The signed-in user, or null when this UI runs without sign-in (demo, tests). */
+  session: Session | null
+}
+
+export default function App({ session }: Props) {
+  const { state, ask, stop } = useAsk(session?.getAccessToken)
   const [health, setHealth] = useState<Health | null>(null)
   const [healthError, setHealthError] = useState(false)
   const [active, setActive] = useState<number | null>(null)
@@ -59,6 +65,14 @@ export default function App() {
           </span>
         )}
         {healthError && <span className="pill pill-error">API unreachable</span>}
+        {session && (
+          <span className="user">
+            <span title="Signed in">{session.email}</span>
+            <button type="button" className="link" onClick={session.signOut}>
+              Sign out
+            </button>
+          </span>
+        )}
       </header>
 
       <main>
@@ -72,9 +86,26 @@ export default function App() {
                 {STATUS_TEXT[state.status] ?? ''}
               </p>
               {state.status === 'error' && (
-                <p className="error" role="alert">
-                  {state.error}
-                </p>
+                <div className="error" role="alert">
+                  {state.errorStatus === 401 ? (
+                    session ? (
+                      <>
+                        Your session has expired.{' '}
+                        <button type="button" className="link" onClick={session.signIn}>
+                          Sign in again
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        The API requires sign-in, but this page has no Cognito settings. Add them to{' '}
+                        <code>apps/web/.env.local</code> (see <code>make cognito-env</code>) and
+                        restart <code>make web-dev</code>.
+                      </>
+                    )
+                  ) : (
+                    state.error
+                  )}
+                </div>
               )}
               {notFound ? (
                 <p className="not-found">

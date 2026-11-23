@@ -39,10 +39,18 @@ async function errorMessage(response: Response): Promise<string> {
 export async function* askStream(
   question: string,
   signal?: AbortSignal,
+  accessToken?: string,
 ): AsyncGenerator<StreamEvent> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  }
+  // This header is why we use fetch and not EventSource, which can't send headers.
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+
   const response = await fetch(`${API_BASE}/ask/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers,
     body: JSON.stringify({ question }),
     signal,
   })

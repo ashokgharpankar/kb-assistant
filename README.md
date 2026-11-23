@@ -5,7 +5,7 @@ Framework and engineering runbooks, with citations. Built the way a production
 team would build it: evaluated, observable, cost-tracked and deployed with
 Terraform.
 
-**Status:** Phases 1–2b done: local RAG with citations, streaming API with tracing, and a React UI. Bedrock waiting on an AWS quota increase.
+**Status:** Phases 1–2c done: local RAG with citations, streaming API with tracing, React UI, Cognito sign-in. Bedrock waiting on an AWS quota increase.
 
 ## Stack
 
@@ -33,7 +33,7 @@ make fetch-sources  # AWS Well-Architected PDFs into data/raw/
 make ingest         # load, chunk, embed, store (skips unchanged files)
 make ask Q="What are the design principles of the Reliability pillar?"
 
-make api            # terminal 1: API on :8000
+make api            # terminal 1: API on :8000 (needs Cognito settings, see Phase 2c)
 make web-dev        # terminal 2: UI on http://localhost:5173
 ```
 
@@ -49,7 +49,7 @@ Run `make` to list every command.
 | 0 | Setup, FinOps guardrails, least-privilege IAM | Done |
 | 1 | RAG with citations, fully local | Done |
 | 1.5 | Quality gate: coverage, Dependabot (SonarQube Cloud ready, switched on later) | Done |
-| 2 | 2a streaming + tracing (done), 2b React UI (done), 2c Cognito sign-in + Bedrock | In progress |
+| 2 | 2a streaming + tracing, 2b React UI, 2c Cognito sign-in (done); Bedrock switch waiting on quota | In progress |
 | 3 | Evaluation harness | |
 | 4 | Hybrid search, reranking, more sources | |
 | 5 | MCP server and LangGraph agent (ADR: LangGraph vs CrewAI) | |
@@ -64,6 +64,7 @@ Run `make` to list every command.
 - [Phase 1.5 guide](docs/phase-1_5-quality-gate.md)
 - [Phase 2a guide](docs/phase-2a-streaming-tracing.md)
 - [Phase 2b guide](docs/phase-2b-web-ui.md)
+- [Phase 2c guide](docs/phase-2c-cognito.md)
 - [Decisions (ADRs)](docs/adr/README.md) · [Investigations](docs/investigations/)
 - [Architecture](docs/architecture/README.md)
 - [Investigations](docs/investigations/) (how problems were diagnosed)

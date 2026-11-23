@@ -39,8 +39,12 @@ class FakePipeline:
         )
 
 
-def test_ask_returns_answer_with_citations(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr(main, "get_pipeline", lambda: FakePipeline())
+def use(pipeline: object) -> None:
+    main.app.dependency_overrides[main.get_pipeline] = lambda: pipeline
+
+
+def test_ask_returns_answer_with_citations() -> None:
+    use(FakePipeline())
     response = TestClient(main.app).post("/ask", json={"question": "How do I stay available?"})
     assert response.status_code == 200
     body = response.json()
@@ -55,6 +59,7 @@ def test_ask_returns_answer_with_citations(monkeypatch) -> None:  # type: ignore
 
 
 def test_ask_validates_input() -> None:
+    use(FakePipeline())
     response = TestClient(main.app).post("/ask", json={"question": "x"})
     assert response.status_code == 422
 
@@ -67,8 +72,8 @@ def parse_sse(body: str) -> list[tuple[str, Any]]:
     return events
 
 
-def test_stream_sends_sources_tokens_then_done(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr(main, "get_pipeline", lambda: FakePipeline())
+def test_stream_sends_sources_tokens_then_done() -> None:
+    use(FakePipeline())
     with TestClient(main.app).stream("POST", "/ask/stream", json={"question": "How?"}) as response:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
@@ -91,13 +96,13 @@ def test_stream_sends_sources_tokens_then_done(monkeypatch) -> None:  # type: ig
     assert events[3][1]["citations"][0]["number"] == 1
 
 
-def test_stream_failure_becomes_an_error_event(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_stream_failure_becomes_an_error_event() -> None:
     class Broken:
         def stream(self, question: str) -> Iterator[StreamEvent]:
             yield SourcesEvent([])
             raise RuntimeError("ollama is down at 10.0.0.5")
 
-    monkeypatch.setattr(main, "get_pipeline", lambda: Broken())
+    use(Broken())
     with TestClient(main.app).stream("POST", "/ask/stream", json={"question": "How?"}) as response:
         body = "".join(response.iter_text())
     events = parse_sse(body)

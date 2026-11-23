@@ -26,6 +26,18 @@ describe('askStream', () => {
     expect(events[3]).toEqual({ type: 'done', result: RESULT })
   })
 
+  it('sends the access token as a Bearer header, and no header without one', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(sseResponse(answerChunks())))
+    await collect(askStream('How?', undefined, 'token-1'))
+    await collect(askStream('How?'))
+
+    const headers = fetchMock.mock.calls.map(([, init]) => init?.headers as Record<string, string>)
+    expect(headers[0]?.Authorization).toBe('Bearer token-1')
+    expect(headers[1]).not.toHaveProperty('Authorization')
+  })
+
   it('yields an error event sent mid-stream', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       sseResponse([

@@ -15,6 +15,7 @@ decision gets a new ADR that supersedes the old one.
 | [0008](0008-streaming-responses-sse.md) | Streaming responses over SSE | 2 | Accepted |
 | [0009](0009-knowledge-base-sources-and-cleaning.md) | Knowledge-base sources and ingestion cleaning | 1 | Accepted |
 | [0020](0020-web-ui.md) | Web UI: Vite + React, same-origin API, model output as text | 2 | Accepted |
+| [0021](0021-authentication-cognito.md) | Sign-in with Cognito; the API verifies access tokens | 2 | Accepted |
 | 0010 | Evaluation framework and quality thresholds | 3 | Planned |
 | 0011 | Hybrid search and reranking | 4 | Planned |
 | 0012 | MCP server boundaries | 5 | Planned |
