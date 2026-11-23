@@ -79,6 +79,37 @@ header h1 {
   color: var(--accent);
 }
 
+.user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+button.link {
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.auth-screen {
+  max-width: 28rem;
+  margin: 15vh auto;
+  padding: 0 1.5rem;
+  text-align: center;
+}
+
+.auth-screen h1 {
+  font-size: 1.5rem;
+}
+
+.auth-screen button {
+  padding: 0.6rem 1.6rem;
+}
+
 .pill-error {
   background: var(--warn-soft);
   color: var(--warn);

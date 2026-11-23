@@ -8,7 +8,7 @@ as the code. Two views:
 
 ---
 
-## Current state: Phase 2b (fully local, streaming, traced, web UI)
+## Current state: Phase 2c (local app, Cognito sign-in in AWS)
 
 ```mermaid
 flowchart TB
@@ -31,8 +31,14 @@ flowchart TB
   end
 
   subgraph Web["Browser"]
-    UI[React UI<br/>apps/web] -- "fetch POST /api/ask/stream<br/>read SSE from the body" --> VP[Vite dev proxy<br/>/api → :8000]
+    UI[React UI<br/>apps/web] -- "fetch POST /api/ask/stream<br/>Authorization: Bearer access token" --> VP[Vite dev proxy<br/>/api → :8000]
   end
+
+  subgraph AWS["AWS (Terraform: envs/dev)"]
+    CG[Cognito user pool<br/>managed login, PKCE<br/>Essentials, admin-created users]
+  end
+
+  UI -- "sign in (redirect)<br/>code + PKCE → tokens" --> CG
 
   subgraph Ask["kb ask / POST /ask / POST /ask/stream (SSE)"]
     Q[Question] --> QE[Embed question]
@@ -43,7 +49,10 @@ flowchart TB
     G -- tokens as written --> A[Answer + citations<br/>tokens, cost, TTFT]
   end
 
-  VP --> Q
+  VP --> AU{Access token valid?<br/>signature, issuer, expiry,<br/>token_use, client_id}
+  AU -- no --> R401[401]
+  AU -- yes --> Q
+  AU -. "public keys (JWKS), cached" .-> CG
   PDF --> L
   MD --> L
   E <--> OL
@@ -67,7 +76,8 @@ sequenceDiagram
   participant LLM as Chat model
 
   U->>UI: question (Enter)
-  UI->>API: POST /api/ask/stream (via Vite proxy)
+  UI->>API: POST /api/ask/stream (via Vite proxy)<br/>Authorization: Bearer <access token>
+  API->>API: verify token with cached Cognito keys (401 if invalid)
   API->>R: stream(question)
   R->>EM: embed_query("search_query: " + question)
   EM-->>R: vector (768)
@@ -128,6 +138,28 @@ erDiagram
 `SPACE` is the embedding space, for example `ollama_nomic_embed_text_768`.
 
 ---
+
+### Sign-in: sequence (authorization code + PKCE)
+
+```mermaid
+sequenceDiagram
+  actor U as User
+  participant UI as React UI (oidc-client-ts)
+  participant CG as Cognito managed login
+  participant API as FastAPI
+
+  U->>UI: Sign in
+  UI->>UI: make code_verifier (random), code_challenge = SHA-256(verifier)
+  UI->>CG: redirect /oauth2/authorize?code_challenge=…&state=…
+  U->>CG: email + password (+ MFA if set up)
+  CG->>UI: redirect back /?code=…&state=…
+  UI->>CG: POST /oauth2/token (code + code_verifier)
+  CG-->>UI: access token (60 min), ID token, refresh token (7 days)
+  UI->>API: POST /api/ask/stream, Authorization: Bearer <access token>
+  API->>API: check signature (cached JWKS), issuer, expiry, token_use=access, client_id
+  API-->>UI: SSE stream (or 401)
+  Note over UI,CG: before the access token expires, the refresh token gets a new one silently
+```
 
 ## Target architecture (end of Phase 8)
 

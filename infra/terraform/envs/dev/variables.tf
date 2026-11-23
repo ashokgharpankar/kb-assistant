@@ -89,3 +89,12 @@ variable "developer_principal_arn" {
   type        = string
   default     = null
 }
+
+variable "web_app_urls" {
+  description = <<-EOT
+    Where the web UI runs. Cognito only redirects back to these exact URLs after
+    sign-in and sign-out. Phase 6 adds the CloudFront URL.
+  EOT
+  type        = list(string)
+  default     = ["http://localhost:5173/"]
+}

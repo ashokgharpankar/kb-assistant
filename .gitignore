@@ -18,6 +18,7 @@ dist/
 
 # Terraform
 .terraform/
+.terraform-validate/
 *.tfstate
 *.tfstate.*
 *.tfplan

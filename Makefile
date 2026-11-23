@@ -1,12 +1,15 @@
 # One front door for every routine command. Run `make` to see the list.
 TF_BOOT := infra/terraform/bootstrap
 TF_DEV  := infra/terraform/envs/dev
+# tflint left Homebrew (license change). Use a local install if there is one,
+# otherwise the official image (Docker or OrbStack must be running).
+TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
 .PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
-        tf-bootstrap tf-init tf-plan tf-apply tf-check
+        tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -117,7 +120,7 @@ tf-bootstrap: ## One-time: create the S3 bucket that stores Terraform state
 	@echo "Wrote $(TF_DEV)/backend.hcl"
 
 tf-init: ## Initialise the dev environment against the remote state bucket
-	terraform -chdir=$(TF_DEV) init -backend-config=backend.hcl
+	terraform -chdir=$(TF_DEV) init -reconfigure -backend-config=backend.hcl
 
 tf-plan: ## Show what Terraform would change
 	terraform -chdir=$(TF_DEV) plan
@@ -125,8 +128,37 @@ tf-plan: ## Show what Terraform would change
 tf-apply: ## Apply the dev environment
 	terraform -chdir=$(TF_DEV) apply
 
+tf-output: ## Show Terraform outputs (app role ARN, Cognito IDs and URLs)
+	terraform -chdir=$(TF_DEV) output
+
+cognito-env: ## Print the Cognito settings for .env and apps/web/.env.local
+	@echo "# ---- add to .env (repo root) ----"
+	@terraform -chdir=$(TF_DEV) output -raw env_api
+	@echo "# ---- add to apps/web/.env.local ----"
+	@terraform -chdir=$(TF_DEV) output -raw env_web
+
+cognito-user: ## Invite a user by email: make cognito-user EMAIL=you@example.com
+	@test -n "$(EMAIL)" || { echo "usage: make cognito-user EMAIL=you@example.com"; exit 2; }
+	@POOL=$$(terraform -chdir=$(TF_DEV) output -raw cognito_user_pool_id); REGION="$${POOL%%_*}"; \
+	if aws cognito-idp admin-get-user --region "$$REGION" --user-pool-id "$$POOL" --username "$(EMAIL)" >/dev/null 2>&1; then \
+	  echo "$(EMAIL) already exists. To email a new temporary password:"; \
+	  echo "  aws cognito-idp admin-create-user --region $$REGION --user-pool-id $$POOL --username $(EMAIL) --message-action RESEND"; \
+	else \
+	  aws cognito-idp admin-create-user --region "$$REGION" --user-pool-id "$$POOL" \
+	    --username "$(EMAIL)" \
+	    --user-attributes Name=email,Value="$(EMAIL)" Name=email_verified,Value=true \
+	    --desired-delivery-mediums EMAIL \
+	    --query 'User.{username:Username,status:UserStatus}' --output table && \
+	  echo "Cognito has emailed a temporary password to $(EMAIL) (from no-reply@verificationemail.com; check spam). It expires in 3 days."; \
+	fi
+
 tf-check: ## Format check, validate and lint Terraform (no AWS access needed)
 	terraform fmt -check -recursive infra/terraform
-	terraform -chdir=$(TF_BOOT) init -backend=false -input=false >/dev/null && terraform -chdir=$(TF_BOOT) validate
-	terraform -chdir=$(TF_DEV) init -backend=false -input=false >/dev/null && terraform -chdir=$(TF_DEV) validate
-	tflint --chdir=$(TF_BOOT) && tflint --chdir=$(TF_DEV)
+	@# A separate data dir, so this never replaces the real backend set up by tf-init
+	@# (validating with -backend=false in .terraform makes the next plan ask for init).
+	TF_DATA_DIR=.terraform-validate terraform -chdir=$(TF_BOOT) init -backend=false -input=false >/dev/null
+	TF_DATA_DIR=.terraform-validate terraform -chdir=$(TF_BOOT) validate
+	TF_DATA_DIR=.terraform-validate terraform -chdir=$(TF_DEV) init -backend=false -input=false >/dev/null
+	TF_DATA_DIR=.terraform-validate terraform -chdir=$(TF_DEV) validate
+	$(TFLINT) --chdir=$(TF_BOOT)
+	$(TFLINT) --chdir=$(TF_DEV)

@@ -65,7 +65,8 @@ Locking (so two runs cannot corrupt state at the same time) used to need a Dynam
 ### Step 1: Install the tools (20 min)
 
 ```bash
-brew install uv fnm awscli gh pre-commit direnv jq tflint trivy gitleaks
+brew install uv fnm awscli gh pre-commit direnv jq trivy gitleaks
+# tflint is no longer in Homebrew: `make tf-check` runs its official Docker image instead.
 brew tap hashicorp/tap && brew install hashicorp/tap/terraform
 brew install --cask orbstack visual-studio-code ollama
 
@@ -98,7 +99,7 @@ git init -b main
 make setup          # uv sync, installs git hooks, creates .env and .envrc
 direnv allow
 make doctor         # every line should say "ok" except the AWS login (next step)
-make lint test      # 22 tests should pass
+make lint test      # 24 tests should pass
 ```
 
 Then publish it:

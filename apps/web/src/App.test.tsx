@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import type { Session } from './lib/auth'
 import { answerChunks, jsonResponse, RESULT, sse, sseResponse } from './test/fakeServer'
 
 const HEALTH = { status: 'ok', version: '0.2.0', env: 'dev', llm_provider: 'ollama' }
@@ -13,6 +14,16 @@ function mockApi(stream: (signal?: AbortSignal) => Response) {
     if (url.endsWith('/ask/stream')) return Promise.resolve(stream(init?.signal ?? undefined))
     return Promise.reject(new Error(`unexpected ${url}`))
   })
+}
+
+function session(overrides: Partial<Session> = {}): Session {
+  return {
+    email: 'ashok@example.com',
+    getAccessToken: () => 'token-1',
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    ...overrides,
+  }
 }
 
 beforeEach(() => {
@@ -28,13 +39,13 @@ async function askQuestion(text = 'How should I design for failure?') {
 describe('App', () => {
   it('shows which provider the API uses', async () => {
     mockApi(() => sseResponse(answerChunks()))
-    render(<App />)
+    render(<App session={null} />)
     expect(await screen.findByText('ollama')).toBeInTheDocument()
   })
 
   it('streams an answer with clickable citations, sources and metrics', async () => {
     mockApi(() => sseResponse(answerChunks()))
-    render(<App />)
+    render(<App session={null} />)
     const user = await askQuestion()
 
     await screen.findByText('llama3.2')
@@ -66,7 +77,7 @@ describe('App', () => {
       answered_from_context: false,
     }
     mockApi(() => sseResponse([sse('sources', []), sse('done', notFound)]))
-    render(<App />)
+    render(<App session={null} />)
     await askQuestion("What's the weather today?")
     expect(await screen.findByText(/nothing close enough/)).toBeInTheDocument()
   })
@@ -78,7 +89,7 @@ describe('App', () => {
         sse('error', { detail: 'answering is temporarily unavailable' }),
       ]),
     )
-    render(<App />)
+    render(<App session={null} />)
     await askQuestion()
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'answering is temporarily unavailable',
@@ -95,7 +106,7 @@ describe('App', () => {
         signal,
       ),
     )
-    render(<App />)
+    render(<App session={null} />)
     const user = await askQuestion()
 
     await screen.findByText('Partial answer')
@@ -108,9 +119,40 @@ describe('App', () => {
     expect(init?.signal?.aborted).toBe(true)
   })
 
+  it("sends the signed-in user's token and shows who is signed in", async () => {
+    const fetchMock = mockApi(() => sseResponse(answerChunks()))
+    const signOut = vi.fn()
+    render(<App session={session({ signOut })} />)
+    expect(screen.getByText('ashok@example.com')).toBeInTheDocument()
+
+    const user = await askQuestion()
+    await screen.findByText('llama3.2')
+    const init = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/ask/stream'))?.[1]
+    expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer token-1')
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+    expect(signOut).toHaveBeenCalled()
+  })
+
+  it('offers to sign in again when the API says 401', async () => {
+    mockApi(() => jsonResponse({ detail: 'invalid or expired token' }, 401))
+    const signIn = vi.fn()
+    render(<App session={session({ signIn })} />)
+    const user = await askQuestion()
+    await user.click(await screen.findByRole('button', { name: 'Sign in again' }))
+    expect(signIn).toHaveBeenCalled()
+  })
+
+  it('explains a 401 when this page has no sign-in settings', async () => {
+    mockApi(() => jsonResponse({ detail: 'sign in required' }, 401))
+    render(<App session={null} />)
+    await askQuestion()
+    expect(await screen.findByRole('alert')).toHaveTextContent('apps/web/.env.local')
+  })
+
   it('does not send questions shorter than the API accepts', async () => {
     const fetchMock = mockApi(() => sseResponse(answerChunks()))
-    render(<App />)
+    render(<App session={null} />)
     await askQuestion('hi')
     expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled()
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/ask/stream'))).toBe(false)
