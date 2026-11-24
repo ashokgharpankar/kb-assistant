@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
+.PHONY: eval eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
@@ -60,6 +60,15 @@ coverage: ## Tests with coverage (incl. integration); HTML report in htmlcov/
 	KB_TEST_DATABASE_URL=postgresql://kb:kb_local_only@localhost:5433/kb_test \
 		uv run pytest --cov --cov-report=term --cov-report=html --cov-report=xml
 	@echo "Open htmlcov/index.html for line-by-line coverage"
+
+eval: ## Score the pipeline on eval/dataset.jsonl (Postgres + Ollama running)
+	uv run kb eval
+
+eval-judge: ## Same, plus an LLM judge for groundedness (slower)
+	uv run kb eval --judge
+
+eval-baseline: ## Run and save the result as eval/baseline.json (commit it)
+	uv run kb eval --update-baseline
 
 api: ## Run the API locally on :8000
 	uv run uvicorn kb_api.main:app --reload --port 8000
