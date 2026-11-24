@@ -9,8 +9,8 @@ from pathlib import Path
 
 from langchain_core.embeddings import Embeddings
 
-from kb_core.chunking import chunk_document, content_fingerprint
-from kb_core.loaders import discover, document_id_for, load_file
+from kb_core.chunking import chunk_document, content_fingerprint, embedding_text
+from kb_core.loaders import DEFAULT_TOC_DEPTH, discover, document_id_for, load_file
 from kb_core.store import PgVectorStore
 
 # Embedding calls are batched: one request per batch instead of one per chunk.
@@ -71,6 +71,8 @@ def ingest_path(
     force: bool = False,
     on_progress: Callable[[DocumentResult], None] | None = None,
     prune: bool = False,
+    toc_depth: int = DEFAULT_TOC_DEPTH,
+    chunk_headers: bool = True,
 ) -> IngestReport:
     """Ingest every supported file under `root`.
 
@@ -86,13 +88,15 @@ def ingest_path(
         seen.add(document_id_for(path))
         started = time.perf_counter()
         try:
-            doc = load_file(path)
-            fingerprint = content_fingerprint(doc, chunk_size, chunk_overlap)
+            doc = load_file(path, toc_depth)
+            fingerprint = content_fingerprint(doc, chunk_size, chunk_overlap, chunk_headers)
             if not force and store.fingerprint_of(doc.document_id) == fingerprint:
                 result = DocumentResult(doc.document_id, "unchanged")
             else:
                 chunks = chunk_document(doc, chunk_size, chunk_overlap)
-                vectors = embed_in_batches(embeddings, [c.text for c in chunks])
+                vectors = embed_in_batches(
+                    embeddings, [embedding_text(c, chunk_headers) for c in chunks]
+                )
                 store.replace_document(doc, fingerprint, chunks, vectors)
                 result = DocumentResult(
                     doc.document_id, "ingested", len(chunks), sum(len(c.text) for c in chunks)

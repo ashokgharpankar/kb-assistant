@@ -83,7 +83,10 @@ def run_case(
     result = CaseResult(case.id, case.kind, case.question, list(case.tags))
     try:
         ranked = retrieve(case.question, depth)
-        result.top_similarity = ranked[0].similarity if ranked else None
+        # The highest cosine similarity among the retrieved chunks. Not ranked[0]: with
+        # hybrid search or a reranker, the first chunk isn't necessarily the most similar,
+        # and the floor analysis is about similarity.
+        result.top_similarity = max((r.similarity for r in ranked), default=None)
         result.retrieved = [
             f"{r.similarity:.3f} {r.chunk.section} p.{r.chunk.page}" for r in ranked[:5]
         ]

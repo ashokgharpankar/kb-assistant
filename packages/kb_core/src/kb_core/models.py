@@ -59,6 +59,8 @@ class RetrievedChunk:
     document_title: str
     uri: str
     similarity: float  # cosine similarity, 1.0 = identical direction
+    fused_score: float | None = None  # hybrid search: reciprocal rank fusion score
+    rerank_score: float | None = None  # reranker relevance, 0..1 (higher = more relevant)
 
 
 @dataclass(frozen=True)

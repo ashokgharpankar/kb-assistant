@@ -56,3 +56,16 @@ handful of manual searches and needs a measured basis.
   set when a phase targets a specific weakness; every real bug becomes a case.
 - Runs are cheap locally (Ollama) but a judge run doubles model calls.
 - Evaluation traffic is not traced in Langfuse, so traces stay real-user only.
+
+## Amendments
+
+**2026-11-24 (Phase 4).**
+
+1. *Top score = highest similarity among the retrieved chunks*, not the first chunk's. With
+   hybrid search or a reranker, the first chunk isn't necessarily the most similar; the old
+   definition understated the top scores (`rel-principles` 0.734 instead of 0.770) and the
+   gap between the groups (−0.009 instead of +0.007). The rejected share at the 0.62 floor
+   was 50% either way: that change came from hybrid search retrieving different chunks.
+2. *Latency is reported but not gated by default.* Local timings varied by 50% between runs
+   with no relevant change. `kb eval --gate-latency` restores the check; it's meant for CI
+   against a hosted model (Phase 7).

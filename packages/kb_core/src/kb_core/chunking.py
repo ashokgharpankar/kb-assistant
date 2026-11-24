@@ -21,7 +21,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from kb_core.models import Chunk, SourceDocument
 
 # Bump when the chunking or cleaning logic changes, so every document is re-chunked.
-CHUNKER_VERSION = "2"
+# 3: heading-path sections, "Resources" blocks removed, optional chunk headers.
+CHUNKER_VERSION = "3"
 
 # Words that mark a "Resources" block: lists of related documents and talks.
 _REFERENCE_MARKERS = re.compile(
@@ -29,6 +30,38 @@ _REFERENCE_MARKERS = re.compile(
     re.IGNORECASE,
 )
 _BULLET = re.compile(r"^\s*([•\-*–]|\d+\.)\s+")
+
+# The start of a "Resources" block at the end of a best practice...
+_RESOURCES_START = re.compile(
+    r"^\s*(resources|related (documents|videos|examples|tools|best practices|services)\s*:)\s*$",
+    re.IGNORECASE,
+)
+# ...and lines that end it: the next best practice ("REL10-BP02 ...") or a known
+# subheading of the next one. Everything in between is a list of titles and links.
+_RESOURCES_END = re.compile(
+    r"^\s*([A-Z]{2,5}\d{2,3}-BP\d{2,3}\b|implementation guidance\b|implementation steps\b|"
+    r"desired outcome\b|common anti-patterns\b|benefits of establishing\b|level of risk exposed\b)",
+    re.IGNORECASE,
+)
+
+
+def strip_resources(text: str) -> str:
+    """Remove "Resources" / "Related …:" blocks (link and talk-title lists) from a chunk.
+
+    Investigation 0001 found ~10% of chunks were guidance followed by such a list;
+    the whole-chunk filter below can't catch those, because they are mostly guidance.
+    """
+    kept: list[str] = []
+    in_block = False
+    for line in text.split("\n"):
+        if _RESOURCES_START.match(line):
+            in_block = True
+            continue
+        if in_block and _RESOURCES_END.match(line):
+            in_block = False
+        if not in_block:
+            kept.append(line)
+    return "\n".join(kept).strip()
 
 
 def is_reference_list(text: str) -> bool:
@@ -67,7 +100,8 @@ def chunk_document(doc: SourceDocument, chunk_size: int, chunk_overlap: int) -> 
     chunks: list[Chunk] = []
     for section in doc.sections:
         for piece in splitter.create_documents([section.text]):
-            text = piece.page_content.strip()
+            # Trimming after splitting keeps start_index (and so the page) correct.
+            text = strip_resources(piece.page_content)
             if len(text) < 40:  # headings or stray fragments: no value as evidence
                 continue
             if is_reference_list(text):  # link lists: relevant-looking, no guidance
@@ -87,10 +121,25 @@ def chunk_document(doc: SourceDocument, chunk_size: int, chunk_overlap: int) -> 
     return chunks
 
 
-def content_fingerprint(doc: SourceDocument, chunk_size: int, chunk_overlap: int) -> str:
+def embedding_text(chunk: Chunk, with_header: bool) -> str:
+    """What gets embedded: the chunk, optionally under its heading path.
+
+    "Security > Design principles" above a bullet list makes the list match a question
+    about design principles; the bare list never says what it is (Phase 3 finding).
+    The stored chunk text stays as is; only the vector changes.
+    """
+    return f"{chunk.section}\n\n{chunk.text}" if with_header else chunk.text
+
+
+def content_fingerprint(
+    doc: SourceDocument, chunk_size: int, chunk_overlap: int, chunk_headers: bool = True
+) -> str:
     """Changes when the text OR the chunking settings change. Used to skip unchanged documents."""
     h = hashlib.sha256()
-    h.update(f"chunker={CHUNKER_VERSION};size={chunk_size};overlap={chunk_overlap}\n".encode())
+    h.update(
+        f"chunker={CHUNKER_VERSION};size={chunk_size};overlap={chunk_overlap};"
+        f"headers={chunk_headers}\n".encode()
+    )
     for section in doc.sections:
         h.update(section.title.encode())
         h.update(b"\x00")

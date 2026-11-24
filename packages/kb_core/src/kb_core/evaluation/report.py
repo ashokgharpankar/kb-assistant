@@ -41,14 +41,21 @@ def compare(
     baseline: Metrics,
     tolerance: float = 0.05,
     cost_latency_tolerance: float = 0.25,
+    gate_latency: bool = False,
 ) -> list[Delta]:
     """Quality scores may drop by `tolerance` (absolute) before it counts as a regression;
-    cost and latency may grow by `cost_latency_tolerance` (relative), because they're noisy."""
+    cost and latency may grow by `cost_latency_tolerance` (relative), because they're noisy.
+
+    Latency is reported but not treated as a regression unless `gate_latency`: on a
+    laptop with a local model, timings move by 50% between identical runs (Phase 4).
+    Gate it where timings are stable (CI against a hosted model, Phase 7).
+    """
     deltas = []
     for name in sorted(set(current) | set(baseline)):
         base, cur = baseline.get(name), current.get(name)
         regressed = False
-        if base is not None and cur is not None and name not in _INFORMATIONAL:
+        skip = name in _INFORMATIONAL or (name.startswith("latency.") and not gate_latency)
+        if base is not None and cur is not None and not skip:
             if name.startswith(_LOWER_IS_BETTER_PREFIXES):
                 regressed = cur > base * (1 + cost_latency_tolerance) and cur - base > 1e-9
             elif lower_is_better(name):
@@ -132,6 +139,7 @@ def to_markdown(
         f"# Evaluation run {c.get('created', '')}",
         "",
         f"Model `{c.get('model')}` · embeddings `{c.get('embedding_space')}` · "
+        f"retrieval `{c.get('retrieval', 'vector')}` · toc_depth={c.get('toc_depth', '–')} · "
         f"k={k} · floor={c['floor']} · {len(run.cases)} cases ({c.get('dataset')})",
         "",
     ]

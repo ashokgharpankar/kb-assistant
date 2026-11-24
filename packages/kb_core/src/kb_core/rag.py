@@ -48,6 +48,7 @@ Rules:
 _CITATION = re.compile(r"\[(\d+)\]")
 
 SearchFn = Callable[[Sequence[float], int, float], list[RetrievedChunk]]
+RankFn = Callable[[str, int, float], list[RetrievedChunk]]  # (question, n, floor) -> chunks
 
 
 def neutralize(text: str) -> str:
@@ -109,8 +110,12 @@ class RagPipeline:
         k: int,
         min_similarity: float,
         tracer: Tracer | None = None,
+        rank: RankFn | None = None,
     ) -> None:
         self.search = search
+        # Phase 4: a full retrieval strategy (hybrid search, reranking). Without it,
+        # plain vector search through `search`, as in Phases 1-3 and in unit tests.
+        self.rank = rank
         self.embeddings = embeddings
         self.chat_model = chat_model
         self.model_id = model_id
@@ -119,6 +124,8 @@ class RagPipeline:
         self.tracer: Tracer = tracer or NoopTracer()
 
     def retrieve(self, question: str) -> list[RetrievedChunk]:
+        if self.rank is not None:
+            return self.rank(question, self.k, self.min_similarity)
         return self.search(self.embeddings.embed_query(question), self.k, self.min_similarity)
 
     def answer(self, question: str) -> Answer:
@@ -220,6 +227,7 @@ def _chunk_summary(r: RetrievedChunk) -> dict[str, Any]:
         "section": r.chunk.section,
         "page": r.chunk.page,
         "similarity": round(r.similarity, 4),
+        "rerank_score": None if r.rerank_score is None else round(r.rerank_score, 4),
     }
 
 

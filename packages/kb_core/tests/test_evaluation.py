@@ -289,9 +289,23 @@ def test_compare_flags_real_regressions_only() -> None:
     # hit rate fell 0.10 (> 0.05); refusals rose only 0.03; latency +20% (< 25%);
     # the recommended floor describes the data, so it never regresses.
     assert regressed == {"retrieval.hit_rate_at_k"}
-    assert {d.name for d in compare({"latency.ttft_p95_ms": 1300.0}, baseline) if d.regressed} == {
-        "latency.ttft_p95_ms"
-    }
+    slower = {"latency.ttft_p95_ms": 1300.0}  # +30%
+    assert not any(d.regressed for d in compare(slower, baseline))  # latency not gated locally
+    gated = compare(slower, baseline, gate_latency=True)
+    assert {d.name for d in gated if d.regressed} == {"latency.ttft_p95_ms"}
+
+
+def test_top_similarity_is_the_best_cosine_not_the_first_chunk() -> None:
+    fused_order = {"Q?": [chunk("first by fusion", 0.60), chunk("most similar", 0.81)]}
+    run = run_eval(
+        [EvalCase("q", "Q?", "out_of_scope")],
+        lambda q, d: fused_order[q][:d],
+        lambda q: Answer(q, NOT_FOUND, answered_from_context=False),
+        {},
+        k=4,
+        floor=0.62,
+    )
+    assert run.cases[0].top_similarity == pytest.approx(0.81)
 
 
 def test_gate_reports_low_high_and_missing_metrics() -> None:
@@ -322,6 +336,9 @@ class EvalStore:
 
     def search(self, vector: list[float], k: int, min_similarity: float = 0.0) -> list[Any]:
         return [chunk("Use a circuit breaker.", 0.8)]
+
+    def hybrid_search(self, vector: list[float], text: str, k: int, rrf_k: int = 60) -> list[Any]:
+        return self.search(vector, k)
 
     def close(self) -> None:
         EvalStore.closed = True

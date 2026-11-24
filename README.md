@@ -5,7 +5,7 @@ Framework and engineering runbooks, with citations. Built the way a production
 team would build it: evaluated, observable, cost-tracked and deployed with
 Terraform.
 
-**Status:** Phases 1–2c done (local RAG with citations, streaming API with tracing, React UI, Cognito sign-in); Phase 3 evaluation in progress. Bedrock waiting on an AWS quota increase.
+**Status:** Phases 1–2c done (local RAG with citations, streaming API with tracing, React UI, Cognito sign-in); Phase 3 evaluation done; Phase 4 retrieval in progress. Bedrock waiting on an AWS quota increase.
 
 ## Stack
 
@@ -50,8 +50,8 @@ Run `make` to list every command.
 | 1 | RAG with citations, fully local | Done |
 | 1.5 | Quality gate: coverage, Dependabot (SonarQube Cloud ready, switched on later) | Done |
 | 2 | 2a streaming + tracing, 2b React UI, 2c Cognito sign-in (done); Bedrock switch waiting on quota | In progress |
-| 3 | Evaluation harness: golden set, kb eval, floor calibration, baseline and gate | In progress |
-| 4 | Hybrid search, reranking, more sources | |
+| 3 | Evaluation harness: golden set, kb eval, floor calibration, baseline and gate | Done |
+| 4 | Heading-path chunks, hybrid search, reranking | In progress |
 | 5 | MCP server and LangGraph agent (ADR: LangGraph vs CrewAI) | |
 | 6 | Terraform, Fargate, Cognito, CI/CD; Kubernetes with Helm on kind | |
 | 7 | Tracing, guardrails, evaluation gate; Prometheus + Grafana | |
@@ -66,6 +66,7 @@ Run `make` to list every command.
 - [Phase 2b guide](docs/phase-2b-web-ui.md)
 - [Phase 2c guide](docs/phase-2c-cognito.md)
 - [Phase 3 guide](docs/phase-3-evaluation.md)
+- [Phase 4 guide](docs/phase-4-retrieval.md)
 - [Decisions (ADRs)](docs/adr/README.md) · [Investigations](docs/investigations/)
 - [Architecture](docs/architecture/README.md)
 - [Investigations](docs/investigations/) (how problems were diagnosed)

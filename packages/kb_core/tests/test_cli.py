@@ -50,6 +50,11 @@ class FakeStore:
     ) -> list[RetrievedChunk]:
         return [HIT]
 
+    def hybrid_search(
+        self, vector: list[float], text: str, k: int, rrf_k: int = 60
+    ) -> list[RetrievedChunk]:
+        return [HIT]
+
     def stats(self) -> StoreStats:
         return StoreStats(documents=3, chunks=120, table="kb_chunks_test_64")
 
@@ -148,3 +153,11 @@ def test_prune_with_a_single_file_is_refused(tmp_path: Path) -> None:
     one.write_text("# One")
     result = runner.invoke(cli.app, ["ingest", str(one), "--prune"])
     assert result.exit_code == 2
+
+
+def test_toc_lists_heading_paths(sample_pdf: Path) -> None:
+    result = runner.invoke(cli.app, ["toc", str(sample_pdf), "--match", "reliab"])
+    assert result.exit_code == 0
+    assert "entries per level: 1: 3" in result.output
+    assert "L1 p.2     Reliability pillar" in result.output
+    assert "Introduction" not in result.output
