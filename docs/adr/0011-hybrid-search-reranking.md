@@ -45,6 +45,7 @@ llama3.2 (3B), k=4, floor 0.62, 34 cases, 2,711 chunks.
 | Heading-path chunks, vector | 83% | 0.76 | 88% | 8% | 72% | 90% | 1.72 s |
 | **+ hybrid search (default)** | **96%** | **0.79** | **94%** | 4% | 73% | 87% | 1.88 s |
 | + FlashRank reranker | 88% | 0.76 | 91% | 0% | 68% | 80% | 2.37 s |
+| Hybrid, after the label fix (baseline) | 100% | 0.81 | 97% | 4% | 68% | 84% | 1.88 s |
 
 - **Hybrid on:** the exact words "design principles" in the heading path are what the
   embedding ranked too low; full-text search catches them.
