@@ -6,6 +6,7 @@ kb ask "What is the Reliability pillar?"
 kb search "multi-AZ"            show raw retrieval results, no model call
 kb stats
 kb eval                         score the pipeline against eval/dataset.jsonl
+kb toc data/raw/x.pdf           show a PDF's table of contents (to pick KB_TOC_DEPTH)
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from typing import Annotated
 
 import typer
 
-from kb_core.factory import build_pipeline, build_store
+from kb_core.factory import build_pipeline, build_retriever, build_store
 from kb_core.ingest import DocumentResult, ingest_path
 from kb_core.models import DoneEvent, RetrievedChunk, TokenEvent
 from kb_core.providers import chat_model_id, embedding_space, get_chat_model, get_embeddings
@@ -56,7 +57,8 @@ def ingest(
     store = build_store(s)
     store.ensure_schema()
     typer.echo(
-        f"provider={s.llm_provider} space={store.space.table_name} chunk={s.chunk_size}/{s.chunk_overlap}"
+        f"provider={s.llm_provider} space={store.space.table_name} chunk={s.chunk_size}/{s.chunk_overlap} "
+        f"toc_depth={s.toc_depth} headers={s.chunk_headers}"
     )
 
     def show(r: DocumentResult) -> None:
@@ -64,7 +66,16 @@ def ingest(
         typer.echo(f"  {r.status:<9} {r.document_id:<45} {detail}  ({r.seconds:.1f}s)")
 
     report = ingest_path(
-        root, store, get_embeddings(s), s.chunk_size, s.chunk_overlap, force, show, prune
+        root,
+        store,
+        get_embeddings(s),
+        s.chunk_size,
+        s.chunk_overlap,
+        force,
+        show,
+        prune,
+        toc_depth=s.toc_depth,
+        chunk_headers=s.chunk_headers,
     )
     for document_id in report.removed:
         typer.echo(f"  removed   {document_id}")
@@ -89,13 +100,16 @@ def search(
     s = get_settings()
     floor = s.min_similarity if min_similarity is None else min_similarity
     store = build_store(s)
-    vector = get_embeddings(s).embed_query(query)
-    hits = store.search(vector, k)
+    retriever = build_retriever(s, store, get_embeddings(s))
+    typer.echo(f"retrieval={retriever.description}\n")
+    hits = retriever.rank(query, k, 0.0)
     for i, r in enumerate(hits, start=1):
         preview = r.chunk.text[:160].replace("\n", " ")
         mark = "" if r.similarity >= floor else "  [below floor: ask would drop this]"
+        rerank = f" rerank={r.rerank_score:.3f}" if r.rerank_score is not None else ""
         typer.echo(
-            f"[{i}] {r.similarity:.3f}  {r.document_title} > {r.chunk.section} (p.{r.chunk.page}){mark}"
+            f"[{i}] {r.similarity:.3f}{rerank}  {r.document_title} > {r.chunk.section} "
+            f"(p.{r.chunk.page}){mark}"
         )
         typer.echo(f"     {preview}...")
     kept = sum(r.similarity >= floor for r in hits)
@@ -195,6 +209,9 @@ def evaluate(
     gate: Annotated[Path, typer.Option(help="Minimum scores to pass")] = Path("eval/gate.toml"),
     save: Annotated[bool, typer.Option(help="Write results to eval/results/")] = True,
     update_baseline: Annotated[bool, typer.Option(help="Make this run the new baseline")] = False,
+    gate_latency: Annotated[
+        bool, typer.Option(help="Treat slower latency than the baseline as a regression")
+    ] = False,
 ) -> None:
     """Score retrieval, answers, refusals and the similarity floor on a fixed question set.
 
@@ -222,9 +239,12 @@ def evaluate(
     store = build_store(s)
     # Evaluation runs are not user traffic: keep them out of the traces.
     pipeline = build_pipeline(s, store=store, tracer=NoopTracer())
+    # Scored with the same strategy the pipeline uses (hybrid, reranker), but deeper
+    # and without the floor, so near misses show up.
+    retriever = build_retriever(s, store, pipeline.embeddings)
 
     def retrieve(question: str, n: int) -> list[RetrievedChunk]:
-        return store.search(pipeline.embeddings.embed_query(question), n, 0.0)
+        return retriever.rank(question, n, 0.0)
 
     llm_judge = None
     if judge:
@@ -244,13 +264,17 @@ def evaluate(
         "created": created,
         "model": chat_model_id(s),
         "embedding_space": embedding_space(s).table_name,
+        "retrieval": retriever.description,
+        "toc_depth": s.toc_depth,
+        "chunk_headers": s.chunk_headers,
+        "candidates": s.retrieval_candidates,
         "dataset": str(dataset),
         "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest()[:12],
         "judge": llm_judge.model_id if llm_judge else None,
     }
     typer.echo(
         f"Evaluating {len(cases)} cases with {config['model']} (k={s.retrieval_k}, "
-        f"floor={s.min_similarity})\n"
+        f"floor={s.min_similarity}, retrieval={retriever.description})\n"
     )
     run = run_eval(
         cases,
@@ -270,7 +294,7 @@ def evaluate(
         previous = json.loads(baseline.read_text(encoding="utf-8"))
         if previous.get("config", {}).get("dataset_sha256") != config["dataset_sha256"]:
             typer.echo("\nNote: the baseline used a different version of the dataset.")
-        deltas = compare(run.metrics, previous["metrics"])
+        deltas = compare(run.metrics, previous["metrics"], gate_latency=gate_latency)
     gate_failures = check_gate(run.metrics, load_gate(gate)) if gate.exists() else None
 
     report = to_markdown(run, deltas, gate_failures)
@@ -292,3 +316,27 @@ def evaluate(
         if regressions:
             typer.echo(f"Regressed against the baseline: {', '.join(regressions)}")
         raise typer.Exit(code=1)
+
+
+@app.command()
+def toc(
+    pdf: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="A PDF file")],
+    depth: Annotated[int, typer.Option(min=1, max=8, help="Deepest level to list")] = 4,
+    match: Annotated[str | None, typer.Option(help="Only entries whose path contains this")] = None,
+) -> None:
+    """A PDF's table of contents as heading paths, with how many entries each level has."""
+    from collections import Counter
+
+    import pymupdf
+
+    with pymupdf.open(pdf) as doc:  # type: ignore[no-untyped-call]
+        entries = doc.get_toc()
+    counts = Counter(level for level, _, _ in entries)
+    typer.echo("entries per level: " + ", ".join(f"{k}: {counts[k]}" for k in sorted(counts)))
+    stack: list[str] = []
+    for level, title, page in entries:
+        del stack[level - 1 :]
+        stack.append(title.strip())
+        path = " > ".join(stack)
+        if level <= depth and (match is None or match.lower() in path.lower()):
+            typer.echo(f"  L{level} p.{page:<5} {path}")

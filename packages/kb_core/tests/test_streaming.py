@@ -109,6 +109,7 @@ def test_trace_has_retrieve_and_generate_under_one_root() -> None:
         "section": "Reliability",
         "page": 42,
         "similarity": 0.81,
+        "rerank_score": None,
     }
     assert generate["model"] == "amazon.nova-micro-v1:0"
     assert generate["usage_details"] == {"input": 1000, "output": 100}

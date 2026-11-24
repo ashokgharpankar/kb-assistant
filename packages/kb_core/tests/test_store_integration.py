@@ -125,3 +125,87 @@ def test_prune_refuses_a_single_file(
 ) -> None:
     with pytest.raises(ValueError, match="prune needs a folder"):
         ingest_path(sample_pdf, store, embeddings, 300, 50, prune=True)
+
+
+# --- Phase 4: hybrid search -----------------------------------------------------------
+
+
+def _load(store: PgVectorStore, embeddings: WordHashEmbeddings) -> None:
+    from kb_core.models import Chunk, SourceDocument
+
+    chunks = [
+        Chunk(
+            "h:1", "h", 0, "The security pillar protects data, systems and assets.", "Security", 1
+        ),
+        Chunk(
+            "h:2",
+            "h",
+            1,
+            "Implement a strong identity foundation. Maintain traceability.",
+            "Security > Design principles",
+            2,
+        ),
+        Chunk("h:3", "h", 2, "Spread the workload across Availability Zones.", "Reliability", 3),
+    ]
+    doc = SourceDocument("h", "Hybrid doc", "file:///h.pdf", ())
+    store.replace_document(doc, "fp", chunks, [embeddings.embed_query(c.text) for c in chunks])
+
+
+def test_hybrid_search_finds_a_chunk_by_its_heading_words(
+    store: PgVectorStore, embeddings: WordHashEmbeddings
+) -> None:
+    _load(store, embeddings)
+    question = "What are the design principles of the Security pillar?"
+    vector = embeddings.embed_query(question)
+
+    vector_only = [h.chunk.chunk_id for h in store.search(vector, k=3)]
+    hybrid = store.hybrid_search(vector, question, k=3)
+    ids = [h.chunk.chunk_id for h in hybrid]
+    # "design principles" only appears in h:2's heading path (weighted 'A'): the keyword
+    # side ranks it first, which lifts it in the fused order.
+    assert ids.index("h:2") < vector_only.index("h:2")
+    assert ids[-1] == "h:3"  # the unrelated Reliability chunk matches no keyword
+    assert all(h.fused_score is not None for h in hybrid)
+    assert hybrid == sorted(hybrid, key=lambda h: h.fused_score or 0.0, reverse=True)
+    assert 0.0 <= hybrid[0].similarity <= 1.0  # cosine similarity still reported
+
+
+def test_hybrid_search_works_when_no_keyword_matches(
+    store: PgVectorStore, embeddings: WordHashEmbeddings
+) -> None:
+    _load(store, embeddings)
+    vector = embeddings.embed_query("the of and")  # only stop words: an empty keyword query
+    assert len(store.hybrid_search(vector, "the of and", k=2)) == 2  # vector side still ranks
+
+
+def test_ensure_schema_upgrades_a_phase_1_table(test_database_url: str) -> None:
+    space = EmbeddingSpace("test", f"old{uuid.uuid4().hex[:8]}", DIMS)
+    s = PgVectorStore(test_database_url, space)
+    with psycopg.connect(s.dsn, autocommit=True) as conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS kb_documents (document_id text PRIMARY KEY, "
+            "title text NOT NULL, uri text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())"
+        )
+        conn.execute(
+            sql.SQL(
+                "CREATE TABLE {t} (chunk_id text PRIMARY KEY, document_id text NOT NULL, "
+                "ordinal integer NOT NULL, section text NOT NULL, page integer NOT NULL, "
+                "content text NOT NULL, embedding vector({d}) NOT NULL, "
+                "content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED)"
+            ).format(t=s.table, d=sql.Literal(DIMS))
+        )
+    try:
+        s.ensure_schema()
+        with psycopg.connect(s.dsn) as conn:
+            columns = {
+                r[0]
+                for r in conn.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                    (space.table_name,),
+                )
+            }
+        assert "search_tsv" in columns and "content_tsv" not in columns
+    finally:
+        s.close()
+        with psycopg.connect(s.dsn, autocommit=True) as conn:
+            conn.execute(sql.SQL("DROP TABLE IF EXISTS {t}").format(t=s.table))

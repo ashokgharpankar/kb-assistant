@@ -49,10 +49,23 @@ class Settings(BaseSettings):
     # 1200 characters is roughly 300 tokens. See docs/adr/0004-chunking-strategy.md
     chunk_size: int = Field(default=1200, ge=200, le=8000)
     chunk_overlap: int = Field(default=200, ge=0, le=2000)
+    # Sections come from the PDF's table of contents down to this depth (Phase 4).
+    toc_depth: int = Field(default=4, ge=1, le=8)
+    # Embed each chunk under its heading path ("Security > Design principles").
+    chunk_headers: bool = True
     retrieval_k: int = Field(default=4, ge=1, le=20)
-    # Cosine similarity below this is treated as "not relevant". A starting guess:
-    # watch real scores with `kb search`, then calibrate properly in Phase 3.
-    min_similarity: float = Field(default=0.4, ge=0.0, le=1.0)
+    # "vector": cosine similarity only. "hybrid": vectors + Postgres full-text search,
+    # merged with reciprocal rank fusion (Phase 4).
+    retrieval_mode: Literal["vector", "hybrid"] = "hybrid"
+    # "none" or "flashrank" (a small local cross-encoder; downloads ~30 MB once).
+    reranker: Literal["none", "flashrank"] = "none"
+    # How many candidates hybrid search and the reranker look at before keeping k.
+    retrieval_candidates: int = Field(default=20, ge=1, le=100)
+    # Cosine similarity below this is treated as "not relevant": no model call.
+    # 0.62 sits in the measured gap (off-topic <= 0.571, relevant >= 0.730, with
+    # nomic-embed-text; investigation 0001). `kb eval` recommends a value from the
+    # evaluation set; each embedding model needs its own calibration.
+    min_similarity: float = Field(default=0.62, ge=0.0, le=1.0)
     answer_max_tokens: int = Field(default=600, ge=50, le=4000)
 
     # --- data stores ---------------------------------------------------------

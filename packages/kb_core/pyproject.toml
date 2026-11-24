@@ -21,6 +21,7 @@ dependencies = [
     "numpy>=2",
     "langfuse>=5",
     "psycopg-pool>=3.2",
+    "flashrank>=0.2.10",
 ]
 
 [project.scripts]

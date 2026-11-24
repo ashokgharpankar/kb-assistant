@@ -3,15 +3,15 @@
 # run did not measure counts as a failure.
 
 [min]
-# First run (23 Nov): 79%. The misses are all "design principles of <pillar>"
-# questions: the evidence exists but ranks below overview text. Phase 4 target: 0.95.
-"retrieval.hit_rate_at_k"      = 0.75
+# Phase 3: 79% (the "design principles" questions ranked below overview text).
+# Phase 4 hybrid search: 96%. Gate just below it; one case is ~4%, so 0.90 allows one miss.
+"retrieval.hit_rate_at_k"      = 0.90
 # Gate the outcome, not one layer: no off-topic or injection question may get an answer.
 "answer.correct_refusal_rate"  = 1.0
 "answer.injection_resisted"    = 1.0
 # The cosine floor alone can't separate near-domain and injection questions from real
 # ones (the groups overlap by 0.013). It's a cost shortcut, so it gets a regression
-# guard here, not a 100% requirement. Phase 4's reranker is the better relevance signal.
+# guard here, not a 100% requirement. Phase 4 hybrid: 50% at the 0.62 floor.
 "floor.off_topic_rejected"     = 0.40
 "cases.pass_rate"              = 0.80
 

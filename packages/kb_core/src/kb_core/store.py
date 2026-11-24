@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import psycopg
@@ -112,9 +113,7 @@ class PgVectorStore:
                         section      text NOT NULL,
                         page         integer NOT NULL,
                         content      text NOT NULL,
-                        embedding    vector({dims}) NOT NULL,
-                        -- Not used until Phase 4 (hybrid search); cheap to keep from day one.
-                        content_tsv  tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
+                        embedding    vector({dims}) NOT NULL
                     )
                     """
                 ).format(table=self.table, dims=sql.Literal(self.space.dimensions))
@@ -128,6 +127,31 @@ class PgVectorStore:
             conn.execute(
                 sql.SQL("CREATE INDEX IF NOT EXISTS {idx} ON {table} (document_id)").format(
                     idx=sql.Identifier(f"{self.space.table_name}_doc"[:63]), table=self.table
+                )
+            )
+            # Full-text search for hybrid retrieval (Phase 4). The heading path is weighted
+            # above the body ('A' > 'B'), so "design principles" in a heading counts more.
+            # Postgres keeps the column up to date itself (a stored generated column).
+            conn.execute(
+                sql.SQL(
+                    """
+                    ALTER TABLE {table} ADD COLUMN IF NOT EXISTS search_tsv tsvector
+                    GENERATED ALWAYS AS (
+                        setweight(to_tsvector('english', section), 'A') ||
+                        setweight(to_tsvector('english', content), 'B')
+                    ) STORED
+                    """
+                ).format(table=self.table)
+            )
+            conn.execute(
+                sql.SQL(
+                    "CREATE INDEX IF NOT EXISTS {idx} ON {table} USING gin (search_tsv)"
+                ).format(idx=sql.Identifier(f"{self.space.table_name}_fts"[:63]), table=self.table)
+            )
+            # Phase 1's placeholder column (content only, never used).
+            conn.execute(
+                sql.SQL("ALTER TABLE {table} DROP COLUMN IF EXISTS content_tsv").format(
+                    table=self.table
                 )
             )
 
@@ -197,40 +221,92 @@ class PgVectorStore:
 
     # --- retrieval -----------------------------------------------------------
 
+    _COLUMNS = """c.chunk_id, c.document_id, c.ordinal, c.section, c.page, c.content,
+                   d.title, d.uri, 1 - (c.embedding <=> %(q)s) AS similarity"""
+
+    @staticmethod
+    def _row_to_hit(r: Sequence[Any], fused: float | None = None) -> RetrievedChunk:
+        return RetrievedChunk(
+            chunk=Chunk(
+                chunk_id=r[0], document_id=r[1], ordinal=r[2], text=r[5], section=r[3], page=r[4]
+            ),
+            document_title=r[6],
+            uri=r[7],
+            similarity=float(r[8]),
+            fused_score=fused,
+        )
+
     def search(
         self, query_vector: Sequence[float], k: int, min_similarity: float = 0.0
     ) -> list[RetrievedChunk]:
         """Top-k chunks by cosine similarity. `<=>` is pgvector's cosine *distance* (1 - similarity)."""
         query = sql.SQL(
             """
-            SELECT c.chunk_id, c.document_id, c.ordinal, c.section, c.page, c.content,
-                   d.title, d.uri, 1 - (c.embedding <=> %(q)s) AS similarity
+            SELECT {columns}
             FROM {table} c JOIN kb_documents d USING (document_id)
             ORDER BY c.embedding <=> %(q)s
             LIMIT %(k)s
             """
-        ).format(table=self.table)
+        ).format(columns=sql.SQL(self._COLUMNS), table=self.table)
         with self.connect() as conn:
             rows = conn.execute(
                 query, {"q": np.asarray(query_vector, dtype=np.float32), "k": k}
             ).fetchall()
-        results = [
-            RetrievedChunk(
-                chunk=Chunk(
-                    chunk_id=r[0],
-                    document_id=r[1],
-                    ordinal=r[2],
-                    text=r[5],
-                    section=r[3],
-                    page=r[4],
-                ),
-                document_title=r[6],
-                uri=r[7],
-                similarity=float(r[8]),
-            )
-            for r in rows
-        ]
+        results = [self._row_to_hit(r) for r in rows]
         return [r for r in results if r.similarity >= min_similarity]
+
+    def hybrid_search(
+        self, query_vector: Sequence[float], query_text: str, k: int, rrf_k: int = 60
+    ) -> list[RetrievedChunk]:
+        """Vector search and keyword search, merged with reciprocal rank fusion (RRF).
+
+        Each list ranks up to k chunks; a chunk's fused score is the sum of 1/(rrf_k + rank)
+        over the lists it appears in. RRF needs no score calibration: cosine similarities
+        and full-text ranks live on different scales, ranks don't. rrf_k = 60 is the value
+        from the original paper and the usual default.
+
+        Keyword matching ORs the question's words (after stemming and stop-word removal),
+        so a chunk doesn't need every word; ts_rank_cd rewards chunks that have more of
+        them close together, and the heading path counts more than body text.
+        """
+        query = sql.SQL(
+            """
+            WITH terms AS (
+                SELECT to_tsquery('english', coalesce(string_agg(quote_literal(lexeme), ' | '), ''))
+                       AS tsq
+                FROM unnest(to_tsvector('english', %(text)s))
+            ),
+            vec AS (
+                SELECT chunk_id, row_number() OVER (ORDER BY embedding <=> %(q)s) AS rank
+                FROM {table} ORDER BY embedding <=> %(q)s LIMIT %(k)s
+            ),
+            kw AS (
+                SELECT c.chunk_id,
+                       row_number() OVER (ORDER BY ts_rank_cd(c.search_tsv, t.tsq) DESC) AS rank
+                FROM {table} c, terms t
+                WHERE c.search_tsv @@ t.tsq
+                ORDER BY ts_rank_cd(c.search_tsv, t.tsq) DESC LIMIT %(k)s
+            ),
+            fused AS (
+                SELECT chunk_id, sum(1.0 / (%(rrf_k)s + rank)) AS score
+                FROM (SELECT * FROM vec UNION ALL SELECT * FROM kw) ranked
+                GROUP BY chunk_id
+            )
+            SELECT {columns}, f.score
+            FROM fused f JOIN {table} c USING (chunk_id) JOIN kb_documents d USING (document_id)
+            ORDER BY f.score DESC, similarity DESC
+            LIMIT %(k)s
+            """
+        ).format(columns=sql.SQL(self._COLUMNS), table=self.table)
+        params = {
+            "q": np.asarray(query_vector, dtype=np.float32),
+            "text": query_text,
+            "k": k,
+            "rrf_k": rrf_k,
+        }
+        with self.connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._row_to_hit(r, float(r[9])) for r in rows]
 
     def document_ids(self) -> list[str]:
         """Documents ingested into this embedding space."""
