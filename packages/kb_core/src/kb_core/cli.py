@@ -5,10 +5,14 @@ kb ingest data/raw              load, chunk, embed and store (skips unchanged fi
 kb ask "What is the Reliability pillar?"
 kb search "multi-AZ"            show raw retrieval results, no model call
 kb stats
+kb eval                         score the pipeline against eval/dataset.jsonl
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -16,9 +20,10 @@ import typer
 
 from kb_core.factory import build_pipeline, build_store
 from kb_core.ingest import DocumentResult, ingest_path
-from kb_core.models import DoneEvent, TokenEvent
-from kb_core.providers import embedding_space, get_embeddings
+from kb_core.models import DoneEvent, RetrievedChunk, TokenEvent
+from kb_core.providers import chat_model_id, embedding_space, get_chat_model, get_embeddings
 from kb_core.settings import get_settings
+from kb_core.tracing import NoopTracer
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="KB Assistant command line.")
 
@@ -164,3 +169,126 @@ def stats() -> None:
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("eval")
+def evaluate(
+    dataset: Annotated[
+        Path, typer.Option(exists=True, dir_okay=False, help="Evaluation set (JSONL)")
+    ] = Path("eval/dataset.jsonl"),
+    k: Annotated[
+        int | None,
+        typer.Option(min=1, max=20, help="Chunks given to the model (default: settings)"),
+    ] = None,
+    min_similarity: Annotated[
+        float | None, typer.Option(min=0.0, max=1.0, help="Similarity floor (default: settings)")
+    ] = None,
+    depth: Annotated[int, typer.Option(min=1, max=50, help="Ranks searched for evidence")] = 10,
+    only: Annotated[list[str] | None, typer.Option(help="Run only these case IDs")] = None,
+    judge: Annotated[bool, typer.Option(help="Also grade groundedness with an LLM judge")] = False,
+    judge_model: Annotated[
+        str | None, typer.Option(help="Judge model (default: the answering model)")
+    ] = None,
+    baseline: Annotated[Path, typer.Option(help="Compare with this earlier run")] = Path(
+        "eval/baseline.json"
+    ),
+    gate: Annotated[Path, typer.Option(help="Minimum scores to pass")] = Path("eval/gate.toml"),
+    save: Annotated[bool, typer.Option(help="Write results to eval/results/")] = True,
+    update_baseline: Annotated[bool, typer.Option(help="Make this run the new baseline")] = False,
+) -> None:
+    """Score retrieval, answers, refusals and the similarity floor on a fixed question set.
+
+    Exits with code 1 if the gate fails or a score regressed against the baseline.
+    """
+    from kb_core.evaluation.dataset import load_dataset
+    from kb_core.evaluation.judge import LLMJudge
+    from kb_core.evaluation.report import check_gate, compare, load_gate, to_markdown
+    from kb_core.evaluation.runner import CaseResult, run_eval
+
+    s = get_settings()
+    updates: dict[str, object] = {}
+    if k is not None:
+        updates["retrieval_k"] = k
+    if min_similarity is not None:
+        updates["min_similarity"] = min_similarity
+    s = s.model_copy(update=updates)
+
+    cases = load_dataset(dataset)
+    if only:
+        cases = [c for c in cases if c.id in set(only)]
+        if not cases:
+            raise typer.BadParameter("no case matches --only")
+
+    store = build_store(s)
+    # Evaluation runs are not user traffic: keep them out of the traces.
+    pipeline = build_pipeline(s, store=store, tracer=NoopTracer())
+
+    def retrieve(question: str, n: int) -> list[RetrievedChunk]:
+        return store.search(pipeline.embeddings.embed_query(question), n, 0.0)
+
+    llm_judge = None
+    if judge:
+        judge_settings = s
+        if judge_model:
+            field = "ollama_chat_model" if s.llm_provider == "ollama" else "bedrock_chat_model"
+            judge_settings = s.model_copy(update={field: judge_model})
+        llm_judge = LLMJudge(get_chat_model(judge_settings), chat_model_id(judge_settings))
+
+    def progress(result: CaseResult) -> None:
+        mark = "ok  " if result.passed(s.retrieval_k) else "FAIL"
+        top = f"{result.top_similarity:.3f}" if result.top_similarity is not None else "  -  "
+        typer.echo(f"  {mark} {top}  {result.id}")
+
+    created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    config = {
+        "created": created,
+        "model": chat_model_id(s),
+        "embedding_space": embedding_space(s).table_name,
+        "dataset": str(dataset),
+        "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest()[:12],
+        "judge": llm_judge.model_id if llm_judge else None,
+    }
+    typer.echo(
+        f"Evaluating {len(cases)} cases with {config['model']} (k={s.retrieval_k}, "
+        f"floor={s.min_similarity})\n"
+    )
+    run = run_eval(
+        cases,
+        retrieve,
+        pipeline.answer,
+        config,
+        s.retrieval_k,
+        s.min_similarity,
+        depth,
+        llm_judge,
+        on_case=progress,
+    )
+    store.close()
+
+    deltas = None
+    if baseline.exists():
+        previous = json.loads(baseline.read_text(encoding="utf-8"))
+        if previous.get("config", {}).get("dataset_sha256") != config["dataset_sha256"]:
+            typer.echo("\nNote: the baseline used a different version of the dataset.")
+        deltas = compare(run.metrics, previous["metrics"])
+    gate_failures = check_gate(run.metrics, load_gate(gate)) if gate.exists() else None
+
+    report = to_markdown(run, deltas, gate_failures)
+    typer.echo("\n" + report)
+
+    if save:
+        out = Path("eval/results")
+        out.mkdir(parents=True, exist_ok=True)
+        stem = f"{created.replace(':', '').replace('-', '')}-{config['model']}".replace("/", "_")
+        (out / f"{stem}.json").write_text(json.dumps(run.to_dict(), indent=2), encoding="utf-8")
+        (out / f"{stem}.md").write_text(report, encoding="utf-8")
+        typer.echo(f"Saved eval/results/{stem}.json and .md")
+    if update_baseline:
+        baseline.write_text(json.dumps(run.to_dict(), indent=2), encoding="utf-8")
+        typer.echo(f"Baseline updated: {baseline}")
+
+    regressions = [d.name for d in deltas or [] if d.regressed]
+    if gate_failures or regressions:
+        if regressions:
+            typer.echo(f"Regressed against the baseline: {', '.join(regressions)}")
+        raise typer.Exit(code=1)

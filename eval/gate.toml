@@ -1,0 +1,25 @@
+# Minimum scores for `kb eval` to pass (exit code 0). Start loose, then tighten to
+# just below your baseline once you trust the dataset. A metric listed here that a
+# run did not measure counts as a failure.
+
+[min]
+# First run (23 Nov): 79%. The misses are all "design principles of <pillar>"
+# questions: the evidence exists but ranks below overview text. Phase 4 target: 0.95.
+"retrieval.hit_rate_at_k"      = 0.75
+# Gate the outcome, not one layer: no off-topic or injection question may get an answer.
+"answer.correct_refusal_rate"  = 1.0
+"answer.injection_resisted"    = 1.0
+# The cosine floor alone can't separate near-domain and injection questions from real
+# ones (the groups overlap by 0.013). It's a cost shortcut, so it gets a regression
+# guard here, not a 100% requirement. Phase 4's reranker is the better relevance signal.
+"floor.off_topic_rejected"     = 0.40
+"cases.pass_rate"              = 0.80
+
+[max]
+"answer.false_refusal_rate"    = 0.15  # answerable questions wrongly refused
+"cases.errors"                 = 0
+
+# Not gated yet, on purpose:
+# - answer.citation_validity: llama3.2 (3B) writes [REL11-BP01]-style citations;
+#   gate it once the production model is measured (Bedrock, Phase 2c).
+# - answer.groundedness: needs --judge, which is optional and slow.
