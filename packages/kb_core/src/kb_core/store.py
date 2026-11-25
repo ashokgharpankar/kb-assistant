@@ -32,6 +32,14 @@ def _plain_dsn(url: str) -> str:
 
 
 @dataclass(frozen=True)
+class DocumentInfo:
+    document_id: str
+    title: str
+    uri: str
+    chunks: int
+
+
+@dataclass(frozen=True)
 class StoreStats:
     documents: int
     chunks: int
@@ -307,6 +315,44 @@ class PgVectorStore:
         with self.connect() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._row_to_hit(r, float(r[9])) for r in rows]
+
+    def chunk_window(self, chunk_id: str, before: int = 1, after: int = 1) -> list[Chunk]:
+        """A chunk and its neighbours in the same document, in reading order.
+
+        Lets a caller (the MCP server, an agent) widen the context around a search hit
+        without another similarity search. Empty if the chunk doesn't exist.
+        """
+        query = sql.SQL(
+            """
+            SELECT n.chunk_id, n.document_id, n.ordinal, n.content, n.section, n.page
+            FROM {table} hit
+            JOIN {table} n ON n.document_id = hit.document_id
+                          AND n.ordinal BETWEEN hit.ordinal - %(before)s AND hit.ordinal + %(after)s
+            WHERE hit.chunk_id = %(id)s
+            ORDER BY n.ordinal
+            """
+        ).format(table=self.table)
+        with self.connect() as conn:
+            rows = conn.execute(
+                query, {"id": chunk_id, "before": before, "after": after}
+            ).fetchall()
+        return [
+            Chunk(chunk_id=r[0], document_id=r[1], ordinal=r[2], text=r[3], section=r[4], page=r[5])
+            for r in rows
+        ]
+
+    def documents(self) -> list[DocumentInfo]:
+        """Documents ingested into this embedding space, with their chunk counts."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT d.document_id, d.title, d.uri, s.chunk_count
+                FROM kb_ingest_state s JOIN kb_documents d USING (document_id)
+                WHERE s.space = %s ORDER BY d.title
+                """,
+                (self.space.table_name,),
+            ).fetchall()
+        return [DocumentInfo(r[0], r[1], r[2], int(r[3])) for r in rows]
 
     def document_ids(self) -> list[str]:
         """Documents ingested into this embedding space."""

@@ -15,11 +15,13 @@ exclude = ["apps/web"]  # the React app is not a Python package
 [tool.uv.sources]
 kb-core = { workspace = true }
 kb-api = { workspace = true }
+kb-mcp = { workspace = true }
 
 [dependency-groups]
 dev = [
     "kb-core",
     "kb-api",
+    "kb-mcp",
     "ruff>=0.8",
     "mypy>=1.13",
     "pytest>=8.3",
@@ -40,7 +42,7 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["kb_core", "kb_api"]
+known-first-party = ["kb_core", "kb_api", "kb_mcp"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
@@ -52,7 +54,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 files = ["apps", "packages", "scripts"]
 explicit_package_bases = true
-mypy_path = ["apps/api/src", "packages/kb_core/src"]
+mypy_path = ["apps/api/src", "apps/mcp/src", "packages/kb_core/src"]
 
 [tool.pytest.ini_options]
 testpaths = ["apps", "packages"]
@@ -64,7 +66,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["kb_core", "kb_api"]
+source = ["kb_core", "kb_api", "kb_mcp"]
 branch = true
 # Paths in coverage.xml are relative to the repo root, which is what SonarQube expects.
 relative_files = true
