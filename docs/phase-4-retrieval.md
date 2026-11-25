@@ -158,9 +158,13 @@ Latency is shown but no longer flagged as a regression by default: on a laptop i
 | A. new chunks, vector | 83% | 0.76 | 88% | 8% | 72% | 90% | 1.72 s | 7.0 s |
 | **B. hybrid** | **96%** | **0.79** | **94%** | 4% | 73% | 87% | 1.88 s | 6.4 s |
 | C. hybrid + rerank | 88% | 0.76 | 91% | 0% | 68% | 80% | 2.37 s | 8.5 s |
+| **B. hybrid, label fixed (final baseline)** | **100%** | **0.81** | **97%** | 4% | 68% | 84% | 1.88 s | 6.7 s |
 
 Measured 24 Nov 2026: llama3.2 (3B), k=4, floor 0.62, 2,711 chunks. Off-topic rejected at the
-floor: 40% (A), 50% (B).
+floor: 40% (A), 50% (B). The last row is the same configuration as B after the
+`perf-principles` label fix ([incident 0008](investigations/0008-stale-eval-label.md)); it is the
+Phase 4 baseline. Fact recall and citation validity move by a few points between runs with a 3B
+model, so read them as level, not as a drop.
 
 Also look at the five "design principles" cases in each report: which change turned them green?
 
@@ -233,7 +237,7 @@ Still failing with hybrid:
 - `sec-principles`: the evidence is in the top 4 but llama3.2 refuses. A generation problem;
   test with qwen2.5:7b or Bedrock.
 - `perf-principles`: the label was wrong, not retrieval. See
-  [incident 0008](investigations/0008-stale-eval-label.md).
+  [incident 0008](investigations/0008-stale-eval-label.md). Fixed: hit@4 is now 100%.
 
 ### Problems found while measuring (24 Nov 2026)
 
@@ -311,8 +315,8 @@ Written up as [incident 0007](investigations/0007-eval-top-score-bug.md).
    prefers paragraph-shaped answers over bullet lists. I kept it off and kept the interface, to
    re-test with a hosted rerank model. "More components" isn't the same as "better".
 
-**Resume line:** "Raised RAG retrieval hit rate @4 from 79% to 96% with heading-path chunk context
-and hybrid search (Postgres full-text + pgvector, reciprocal rank fusion); measured and rejected a
+**Resume line:** "Raised RAG retrieval hit rate @4 from 79% to 100% on a 34-question evaluation set
+with heading-path chunk context and hybrid search (Postgres full-text + pgvector, reciprocal rank fusion); measured and rejected a
 cross-encoder reranker that lowered quality on this corpus."
 
 ---
@@ -323,7 +327,7 @@ cross-encoder reranker that lowered quality on this corpus."
 - [x] TOC inspected; `KB_TOC_DEPTH` covers the "Design principles" level
 - [x] Experiments A–C in the table
 - [x] Defaults chosen (hybrid on, reranker off); gate raised to 0.90
-- [ ] New baseline saved (after the label fix)
+- [x] New baseline saved (after the label fix): hit@4 100%, pass 97%
 - [ ] Reference-marker count re-measured
 - [ ] Merged with the table in the PR description
 
