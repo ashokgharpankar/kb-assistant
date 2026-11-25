@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -90,7 +91,7 @@ class FakePipeline:
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "build_store", lambda s: FakeStore())
-    monkeypatch.setattr(cli, "build_pipeline", lambda s: FakePipeline())
+    monkeypatch.setattr(cli, "build_answerer", lambda s: FakePipeline())
     monkeypatch.setattr(cli, "get_embeddings", lambda s: WordHashEmbeddings())
 
 
@@ -161,3 +162,31 @@ def test_toc_lists_heading_paths(sample_pdf: Path) -> None:
     assert "entries per level: 1: 3" in result.output
     assert "L1 p.2     Reliability pillar" in result.output
     assert "Introduction" not in result.output
+
+
+def test_ask_mode_agent_selects_the_agent_and_prints_its_steps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    modes: list[str] = []
+
+    class StepsPipeline(FakePipeline):
+        def stream(self, question: str) -> Iterator[StreamEvent]:
+            for event in super().stream(question):
+                if isinstance(event, DoneEvent):
+                    event.answer.steps = [
+                        "search 'q': 1 hits, 1 new",
+                        "generate from 1 chunks: answered",
+                    ]
+                yield event
+
+    def build(s: Any) -> StepsPipeline:
+        modes.append(s.answer_mode)
+        return StepsPipeline()
+
+    monkeypatch.setattr(cli, "build_answerer", build)
+    result = runner.invoke(cli.app, ["ask", "How do I stay available?", "--mode", "agent"])
+    assert result.exit_code == 0
+    assert modes == ["agent"]
+    assert "agent steps:" in result.output
+    assert "generate from 1 chunks: answered" in result.output
+    assert runner.invoke(cli.app, ["ask", "q", "--mode", "crew"]).exit_code == 2

@@ -98,6 +98,8 @@ def fmt(name: str, value: float | None) -> str:
         return f"${value:.6f}"
     if name.startswith("cost.tokens") or name == "cases.errors":
         return f"{value:,.0f}"
+    if name == "cost.searches_per_question":
+        return f"{value:.2f}"
     if name in ("floor.gap", "floor.recommended"):
         return f"{value:.3f}"
     return f"{value:.0%}"
@@ -122,6 +124,7 @@ DESCRIPTIONS = {
     "cost.total_usd": "model cost for the whole run",
     "cost.tokens_in": "input tokens",
     "cost.tokens_out": "output tokens",
+    "cost.searches_per_question": "searches per question (1 for the pipeline; the agent may search again)",
     "latency.ttft_p50_ms": "time to first token, median",
     "latency.ttft_p95_ms": "time to first token, 95th percentile",
     "latency.total_p95_ms": "total answer time, 95th percentile",
@@ -139,7 +142,7 @@ def to_markdown(
         f"# Evaluation run {c.get('created', '')}",
         "",
         f"Model `{c.get('model')}` · embeddings `{c.get('embedding_space')}` · "
-        f"retrieval `{c.get('retrieval', 'vector')}` · toc_depth={c.get('toc_depth', '–')} · "
+        f"retrieval `{c.get('retrieval', 'vector')}` · answer `{c.get('answer_mode', 'pipeline')}` · toc_depth={c.get('toc_depth', '–')} · "
         f"k={k} · floor={c['floor']} · {len(run.cases)} cases ({c.get('dataset')})",
         "",
     ]
@@ -198,6 +201,15 @@ def to_markdown(
         )
         top = f"{r.top_similarity:.3f}" if r.top_similarity is not None else "–"
         lines.append(f"- **{r.id}** ({r.kind}, top {top}): {why}. _{r.question}_")
+        if r.searches > 1:
+            lines += [f"  - {step}" for step in r.steps]
+
+    retried = [r for r in run.cases if r.searches > 1 and r.passed(k)]
+    if retried:
+        lines += ["", f"## Passed after searching again ({len(retried)})", ""]
+        for r in retried:
+            lines.append(f"- **{r.id}** ({r.searches} searches)")
+            lines += [f"  - {step}" for step in r.steps]
 
     bad_citations = [
         r for r in run.cases if r.citations.get("non_numeric") or r.citations.get("out_of_range")

@@ -18,7 +18,7 @@ from typing import Any, Literal, Protocol
 
 from kb_core.settings import Settings
 
-ObservationType = Literal["span", "chain", "retriever", "generation"]
+ObservationType = Literal["span", "chain", "retriever", "generation", "agent"]
 
 
 class Observation(Protocol):

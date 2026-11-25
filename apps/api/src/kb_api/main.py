@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool
 
 from kb_core import __version__
-from kb_core.factory import build_pipeline
+from kb_core.factory import build_answerer
 from kb_core.models import Answer, DoneEvent, SourcesEvent, StreamEvent, TokenEvent
 from kb_core.settings import get_settings
 
@@ -81,7 +81,7 @@ class AskResponse(BaseModel):
 
 
 class Pipeline(Protocol):
-    """What the endpoints need from a pipeline. RagPipeline fits; so do test fakes."""
+    """What the endpoints need from a pipeline. RagPipeline and RetrievalAgent fit; so do test fakes."""
 
     def stream(self, question: str) -> Iterator[StreamEvent]: ...
 
@@ -90,7 +90,7 @@ class Pipeline(Protocol):
 
 @lru_cache
 def get_pipeline() -> Pipeline:
-    return build_pipeline(get_settings())  # built once: model clients, DB pool
+    return build_answerer(get_settings())  # pipeline or agent (KB_ANSWER_MODE); built once
 
 
 def provider_label() -> str:
