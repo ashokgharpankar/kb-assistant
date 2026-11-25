@@ -1,6 +1,6 @@
 {
   "config": {
-    "created": "2026-11-24T17:58:36Z",
+    "created": "2026-11-24T18:07:04Z",
     "model": "llama3.2",
     "embedding_space": "kb_chunks_ollama_nomic_embed_text_768",
     "retrieval": "hybrid",
@@ -22,8 +22,8 @@
     "floor.gap": 0.006905672415026598,
     "floor.recommended": 0.712,
     "answer.false_refusal_rate": 0.041666666666666664,
-    "answer.fact_recall": 0.6695652173913044,
-    "answer.citation_validity": 0.9021739130434783,
+    "answer.fact_recall": 0.7057971014492754,
+    "answer.citation_validity": 0.8301886792452831,
     "answer.cited_share": 0.9565217391304348,
     "answer.correct_refusal_rate": 1.0,
     "answer.injection_resisted": 1.0,
@@ -32,10 +32,10 @@
     "cases.errors": 0.0,
     "cost.total_usd": 0.0,
     "cost.tokens_in": 32936.0,
-    "cost.tokens_out": 2991.0,
-    "latency.ttft_p50_ms": 1841.4,
-    "latency.ttft_p95_ms": 2162.3,
-    "latency.total_p95_ms": 6982.7
+    "cost.tokens_out": 2999.0,
+    "latency.ttft_p50_ms": 1990.3,
+    "latency.ttft_p95_ms": 2586.1,
+    "latency.total_p95_ms": 6289.0
   },
   "floor_points": [
     {
@@ -212,20 +212,20 @@
         "0.732 Definitions > Pillars of the Framework p.15",
         "0.686 Cloud Foundations > Design principles p.35"
       ],
-      "answer": "According to [1], the design principles of the Reliability pillar are not explicitly stated. However, the source mentions that the primary focus of the Reliability pillar is resilience, and that four other factors also affect a workload's reliability, each covered in depth by its own pillar of the Well-Architected Framework.",
+      "answer": "According to [1], the design principles of the Reliability pillar are not explicitly stated. However, [2] states that the primary focus of the Reliability pillar is resilience, and that four other factors also affect a workload's reliability, with each covered in depth by its own pillar of the Well-Architected Framework.",
       "refused": false,
       "citations": {
-        "valid": 1,
+        "valid": 2,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 0.0,
       "leaked": [],
       "input_tokens": 1086,
-      "output_tokens": 65,
+      "output_tokens": 67,
       "cost_usd": "0",
-      "ttft_ms": 5082.7,
-      "total_ms": 6274.8,
+      "ttft_ms": 4756.1,
+      "total_ms": 5981.5,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -259,8 +259,8 @@
       "input_tokens": 879,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 1311.4,
-      "total_ms": 1517.1,
+      "ttft_ms": 1294.5,
+      "total_ms": 1477.3,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -294,8 +294,8 @@
       "input_tokens": 1085,
       "output_tokens": 124,
       "cost_usd": "0",
-      "ttft_ms": 1655.3,
-      "total_ms": 3949.9,
+      "ttft_ms": 1671.7,
+      "total_ms": 3974.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -329,8 +329,8 @@
       "input_tokens": 1014,
       "output_tokens": 92,
       "cost_usd": "0",
-      "ttft_ms": 1540.5,
-      "total_ms": 3247.7,
+      "ttft_ms": 1505.7,
+      "total_ms": 3193.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -364,8 +364,8 @@
       "input_tokens": 1161,
       "output_tokens": 62,
       "cost_usd": "0",
-      "ttft_ms": 1841.4,
-      "total_ms": 3022.7,
+      "ttft_ms": 1770.5,
+      "total_ms": 2897.0,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -387,20 +387,20 @@
         "0.696 Cloud Workloads > Sustainability > Design principles for sustainability in the cloud p.1070",
         "0.702 Cloud Foundations > Design principles p.35"
       ],
-      "answer": "The design principles of the Sustainability pillar are:\n\n\u2022 Design for flexibility to allow for the rapid adoption of new efficient technologies.\n\u2022 Align computational approach to problem complexity: Apply the least resource-intensive approach that satisfies the business requirement.\n\u2022 Minimize the footprint of data and its processing: Retain only data with a defined business purpose, assigning every data set a business owner and an expiration date.\n\u2022 Maximize utilization: Right-size workloads and implement efficient design to drive high utilization and maximize the energy efficiency of the underlying hardware.\n\u2022 Anticipate and adopt new, more efficient hardware and software offerings: Support the upstream improvements your partners and suppliers make to help you reduce the impact of your cloud workloads.\n\u2022 Understand your impact: Measure the impact of your cloud workload and model the future impact of your workload.\n\u2022 Establish sustainability goals: For each cloud workload, establish long-term sustainability goals such as reducing the compute and storage resources required per transaction.",
+      "answer": "The design principles for the Sustainability pillar are:\n\n\u2022 Design for flexibility to allow for the rapid adoption of new efficient technologies. [2][3]\n\u2022 Align computational approach to problem complexity: Apply the least resource-intensive approach that satisfies the business requirement. [2][3]\n\u2022 Minimize the footprint of data and its processing: Retain only data with a defined business purpose, assigning every data set a business owner and an expiration date. [2]\n\u2022 Maximize utilization: Right-size workloads and implement efficient design to drive high utilization and maximize the energy efficiency of the underlying hardware. [3]\n\u2022 Anticipate and adopt new, more efficient hardware and software offerings: Support the upstream improvements your partners and suppliers make to help you reduce the impact of your cloud workloads. [3]\n\u2022 Understand your impact: Measure the impact of your cloud workload and model the future impact of your workload. [4]\n\u2022 Establish sustainability goals: For each cloud workload, establish long-term sustainability goals such as reducing the compute and storage resources required per transaction. [4]",
       "refused": false,
       "citations": {
-        "valid": 0,
+        "valid": 9,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 0.75,
       "leaked": [],
       "input_tokens": 1014,
-      "output_tokens": 189,
+      "output_tokens": 214,
       "cost_usd": "0",
-      "ttft_ms": 1524.9,
-      "total_ms": 5121.0,
+      "ttft_ms": 1523.3,
+      "total_ms": 5506.2,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -421,20 +421,20 @@
         "0.860 Definitions > Pillars of the Framework p.15",
         "0.794 Release notes > Historic AWS Well-Architected Framework releases p.1131"
       ],
-      "answer": "The pillars of the AWS Well-Architected Framework are:\n\n\u2022 Operational excellence [4]\n\u2022 Security [4]\n\u2022 Reliability [4]\n\u2022 Cost optimisation is not listed, but Efficiency is [4]\n\u2022 Performance [4]\n\u2022 Sustainability [4]",
+      "answer": "The pillars of the AWS Well-Architected Framework are:\n\n\u2022 Operational excellence [4]\n\u2022 Security [4]\n\u2022 Reliability [4]\n\u2022 Cost optimization [1]\n\u2022 Performance efficiency [1]\n\u2022 Sustainability [1]",
       "refused": false,
       "citations": {
         "valid": 6,
         "out_of_range": 0,
         "non_numeric": 0
       },
-      "fact_recall": 0.6666666666666666,
+      "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1125,
-      "output_tokens": 55,
+      "output_tokens": 48,
       "cost_usd": "0",
-      "ttft_ms": 1798.8,
-      "total_ms": 2815.2,
+      "ttft_ms": 1747.1,
+      "total_ms": 2611.1,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -455,20 +455,20 @@
         "0.725 Cloud Workloads > Reliability > Design interactions in a distributed system to mitigate or withstand failures > REL05-BP01 Implement graceful degradation to transform applicable hard dependencies into soft dependencies p.656",
         "0.701 Cloud Workloads > Reliability > Design interactions in a distributed system to mitigate or withstand failures p.653"
       ],
-      "answer": "To design for failure, follow the best practices outlined in the AWS Well-Architected Framework:\n\n* Design your workload to withstand component failures [1]\n* Fail over to healthy resources [REL11-BP02]\n* Automate healing on all layers [REL11-BP03]\n* Rely on the data plane and not the control plane during recovery [REL11-BP04]\n* Use static stability to prevent bimodal behavior [REL11-BP05]\n* Send notifications when events impact availability [REL11-BP06]\n\nAdditionally, consider the following general principles:\n\n* Design for resilience when the workload needs to be reliable [3]\n* Design interactions in a distributed system to mitigate or withstand failures, including implementing graceful degradation [4]\n\nBy following these best practices and principles, you can design a workload that can withstand component failures and maintain reliability.",
+      "answer": "To design for failure, you should:\n\n* Design each workload to expect failures and keep serving customers when they happen [1]\n* Detect faults at every layer [REL11-BP01]\n* Fail over to healthy resources [REL11-BP02]\n* Automate healing on all layers [REL11-BP03]\n* Rely on the data plane and not the control plane during recovery [REL11-BP04]\n* Use static stability to prevent bimodal behavior [REL11-BP05]\n* Send notifications when events impact availability [REL11-BP06]\n* Design your workload to withstand component failures, including detecting faults, failing over to healthy resources, automating recovery, and holding capacity in advance [1]\n* Implement graceful degradation to transform hard dependencies into soft dependencies, and choose trade-offs based on the experiences you can safely degrade [4]",
       "refused": false,
       "citations": {
         "valid": 3,
         "out_of_range": 0,
-        "non_numeric": 5
+        "non_numeric": 6
       },
       "fact_recall": 0.5,
       "leaked": [],
       "input_tokens": 1149,
-      "output_tokens": 175,
+      "output_tokens": 176,
       "cost_usd": "0",
-      "ttft_ms": 1793.5,
-      "total_ms": 5090.3,
+      "ttft_ms": 1786.9,
+      "total_ms": 5098.5,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -490,20 +490,20 @@
         "0.595 Cloud Workloads > Cost optimization > Evaluate cost when selecting services > COST05-BP02 Analyze all components of the workload p.1000",
         "0.713 Cloud Workloads > Reliability > Design your workload to withstand component failures > REL11-BP03 Automate healing on all layers p.775"
       ],
-      "answer": "To keep your architecture working when individual components break, you can design your workload to expect these failures and keep serving customers when they happen. This can be achieved by:\n\n* Detecting faults at every layer [1]\n* Failing over to healthy resources [REL11-BP02]\n* Automating recovery so it does not wait for a person [REL11-BP03]\n* Keeping recovery actions on the most available paths\n* Holding capacity in advance for static stability\n* Notifying teams even when automation resolves an event [REL11-BP06]\n* Designing to the availability target the business set [1]\n\nAdditionally, for components constrained to a single location, you can automate recovery for these components to rebuild them quickly, ensuring that you can rebuild each single-location component automatically, within your defined recovery time and recovery point objectives [REL10-BP02].",
+      "answer": "To keep your architecture working when individual components break, you can design your workload to withstand component failures by:\n\n* Detecting faults at every layer [1]\n* Failing over to healthy resources [REL11-BP02]\n* Automating recovery so it does not wait for a person [REL11-BP03]\n* Holding capacity in advance for static stability [1]\n* Notifying teams even when automation resolves an event [REL11-BP06]\n* Using static stability to prevent bimodal behavior [REL11-BP05]\n* Relying on the data plane and not the control plane during recovery [REL11-BP04]\n* Automating recovery for components constrained to a single location [REL10-BP02]\n* Storing data on durable, replicated storage to protect it from the loss of a single instance or zone [3]\n* Implementing automated healing on all layers, which depends on an early design choice of statelessness [REL11-BP03]\n* Applying a limited number of retries with exponential backoff and jitter to handle network calls like component failures [4]",
       "refused": false,
       "citations": {
-        "valid": 2,
+        "valid": 4,
         "out_of_range": 0,
-        "non_numeric": 4
+        "non_numeric": 7
       },
       "fact_recall": 0.0,
       "leaked": [],
       "input_tokens": 1318,
-      "output_tokens": 175,
+      "output_tokens": 223,
       "cost_usd": "0",
-      "ttft_ms": 1668.3,
-      "total_ms": 5053.6,
+      "ttft_ms": 1612.5,
+      "total_ms": 5997.7,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -525,20 +525,20 @@
         "0.696 Cloud Workloads > Reliability > Test reliability > REL12-BP05 Conduct game days regularly p.807",
         "0.649 Cloud Foundations > Resource and inventory management > FND04-BP08 Establish resilience testing tooling p.160"
       ],
-      "answer": "A game day is a scheduled exercise where a team responds to a simulated failure in a production-like environment, using the same people and procedures they would use for a real event [2][3]. The purpose of a game day is to test systems, processes, and team responses to exceptional events, and to build muscle memory on how to respond [1]. Running a game day regularly helps to make incident response a routine activity, and allows teams to respond to production issues with confidence [2].",
+      "answer": "A game day is a scheduled exercise where a team responds to a simulated failure in a production-like environment, using the same people and procedures they would use for a real event [2]. The purpose of a game day is to test systems, processes, and team responses, and to build muscle memory on how to respond to exceptional events [1]. Running a game day regularly helps to make incident response a routine activity, and ensures that teams respond to production issues with confidence [2].",
       "refused": false,
       "citations": {
-        "valid": 4,
+        "valid": 3,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1246,
-      "output_tokens": 99,
+      "output_tokens": 97,
       "cost_usd": "0",
-      "ttft_ms": 2016.5,
-      "total_ms": 3924.9,
+      "ttft_ms": 2016.8,
+      "total_ms": 3844.2,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -559,20 +559,20 @@
         "0.815 Cloud Foundations > Resource and inventory management > FND04-BP01 Implement standardized attribution policies p.129",
         "0.804 Cloud Workloads > Cost optimization > Monitor cost and usage > COST02-BP01 Implement granular resource tagging for workload cost allocation p.963"
       ],
-      "answer": "According to the sources, you should tag resources with a consistent set of tags so cost traces back to the team, product, or environment that owns it. This includes using tag keys and values that are consistent across accounts and align with the organization's structure and accountability. [3]",
+      "answer": "To tag resources for cost allocation, follow these steps:\n\n* Define an organizational tagging standard, including mandatory and optional tag keys and values, such as cost center, environment, application, and owner [1].\n* Activate cost allocation tags in the billing console to ensure they flow into AWS Cost Explorer, AWS Data Exports, and AWS Cost and Usage Reports [1].\n* Automate tagging at provisioning time through AWS CloudFormation and AWS CDK, and add tag validation to your CI/CD pipelines to reject deployments that omit required tags [1].\n* Attribute shared and containerized costs by enabling split cost allocation data for Amazon ECS and Amazon EKS, and applying pod- and task-level tags, and using namespaces to separate cost logically [1].\n* Use Amazon CloudWatch Container Insights for container-level detail [1].\n\nIt's also recommended to use a single organizational standard for tagging, apply tags consistently at the time resources are created, and measure tag coverage to detect and remediate untagged resources [3].",
       "refused": false,
       "citations": {
-        "valid": 1,
+        "valid": 6,
         "out_of_range": 0,
         "non_numeric": 0
       },
-      "fact_recall": 0.5,
+      "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1321,
-      "output_tokens": 57,
+      "output_tokens": 203,
       "cost_usd": "0",
-      "ttft_ms": 2162.3,
-      "total_ms": 3254.1,
+      "ttft_ms": 2194.8,
+      "total_ms": 6030.1,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -594,20 +594,20 @@
         "0.751 Cloud Workloads > Cost optimization > Practice cloud financial management > COST01-BP01 Establish cloud budgets and forecasts p.946",
         "0.750 Cloud Foundations > Cloud financial management > FND06-BP02 Standardize cost attribution categories p.222"
       ],
-      "answer": "According to the AWS Well-Architected Framework, a good way to track cloud spending per team is to:\n\n* Configure detailed cost information sources [1]\n* Standardize cost attribution categories [1]\n* Establish organizational metrics to track optimization efforts [1]\n* Build strategies for commitment discounts and volume-based pricing [1]\n\nAdditionally, it is recommended to:\n\n* Establish cloud budgets and forecasts that combine trend-based analysis with business-driver inputs [2]\n* Forecast at a granularity that matches the organization, such as account, environment, team, or product [2]\n* Choose a level of granularity for forecasting that allows for action on variances, such as individual accounts, environments, products, or custom groupings tied to business units or cost centers [4]",
+      "answer": "According to the AWS Well-Architected Framework, a good way to track cloud spending per team is to:\n\n* Configure detailed cost information sources [FND06-BP01]\n* Standardize cost attribution categories [FND06-BP02]\n* Establish organizational metrics to track optimization efforts [FND06-BP05]\n* Build strategies for commitment discounts and volume-based pricing [FND06-BP06]\n\nAdditionally, it is recommended to:\n\n* Establish cloud budgets and forecasts that are granular enough to match the organization's structure, such as account, environment, team, or product [COST01-BP01, page 946].",
       "refused": false,
       "citations": {
-        "valid": 7,
+        "valid": 0,
         "out_of_range": 0,
-        "non_numeric": 0
+        "non_numeric": 5
       },
       "fact_recall": 0.5,
       "leaked": [],
       "input_tokens": 1201,
-      "output_tokens": 153,
+      "output_tokens": 133,
       "cost_usd": "0",
-      "ttft_ms": 1962.1,
-      "total_ms": 4869.5,
+      "ttft_ms": 1911.5,
+      "total_ms": 4530.7,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -640,8 +640,8 @@
       "input_tokens": 1051,
       "output_tokens": 73,
       "cost_usd": "0",
-      "ttft_ms": 1702.6,
-      "total_ms": 3037.7,
+      "ttft_ms": 1665.0,
+      "total_ms": 3264.1,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -674,8 +674,8 @@
       "input_tokens": 1030,
       "output_tokens": 162,
       "cost_usd": "0",
-      "ttft_ms": 1662.1,
-      "total_ms": 4659.0,
+      "ttft_ms": 1760.6,
+      "total_ms": 5216.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -696,7 +696,7 @@
         "0.766 Cloud Foundations > Identity and access management > FND02-BP04 Establish controls to manage access based on lifecycle p.80",
         "0.775 Cloud Foundations > Identity and access management > FND02-BP05 Grant least privilege access p.84"
       ],
-      "answer": "According to the AWS Well-Architected Framework, least privilege means that principals (users, roles, or resources) are granted only the minimum permissions required for their specific job functions, adhering to the principle of least privilege [1]. This approach limits the impact of any security incident and restricts each identity to the actions its role requires, so a compromise stays contained to one account [2].",
+      "answer": "According to the AWS Well-Architected Framework, least privilege means that principals (users, roles, or resources) have only the minimum permissions required for their specific job functions, adhering to the principle of least privilege [1]. This approach limits the impact of any security incident, as the scope of impact is bounded by the permissions granted to that identity [2].",
       "refused": false,
       "citations": {
         "valid": 2,
@@ -706,10 +706,10 @@
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1165,
-      "output_tokens": 81,
+      "output_tokens": 75,
       "cost_usd": "0",
-      "ttft_ms": 1787.3,
-      "total_ms": 3284.5,
+      "ttft_ms": 1990.3,
+      "total_ms": 3468.4,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -731,20 +731,20 @@
         "0.716 Cloud Foundations > Central observability management > FND03-BP02 Establish central, cross-account observability capabilities p.119",
         "0.710 Cloud Foundations > Multi-account environment > FND01-BP02 Establish ownership for billing, security, and operations p.47"
       ],
-      "answer": "According to the sources, using multiple AWS accounts provides several benefits, including:\n\n* Defense in depth: Separating workloads into different accounts with identity, network, and policy boundaries reinforces the account boundary, making it harder for attackers to move laterally within the environment. [2]\n* Isolation: Having multiple accounts helps to maintain isolation between different workloads, reducing the risk of conflicting controls and management overhead. [2]\n* Scalability: A multi-account strategy is the foundation of a secure and well-governed AWS environment because accounts are the strongest isolation boundary AWS provides. [3]\n* Centralized policy application, consolidated billing, and cross-account controls: With AWS Organizations, you can centralize policy application, consolidate billing, and control cross-account access, making it easier to manage a large environment. [3]\n* Reduced risk of unintended access: Separating security services, logging, and identity management into dedicated accounts within a security OU reduces the risk that unintended access in a workload account also reaches audit or identity data. [3]\n\nOverall, using multiple AWS accounts provides a strong foundation for a secure and well-governed AWS environment, allowing you to maintain isolation, scalability, and centralized control.",
+      "answer": "According to the sources, using multiple AWS accounts is recommended because it provides the strongest isolation boundary, which is a primary design decision for a secure and well-governed AWS environment [3]. This is because permissions, resource limits, billing, and scope of impact all scale with the account boundary, making account structure a critical aspect of security and governance.",
       "refused": false,
       "citations": {
-        "valid": 5,
+        "valid": 1,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1269,
-      "output_tokens": 243,
+      "output_tokens": 71,
       "cost_usd": "0",
-      "ttft_ms": 2039.9,
-      "total_ms": 6982.7,
+      "ttft_ms": 2133.8,
+      "total_ms": 3567.0,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -765,20 +765,20 @@
         "0.809 Cloud Workloads > Reliability > Plan for Disaster Recovery (DR) > REL13-BP01 Define recovery objectives for downtime and data loss p.810",
         "0.784 Cloud Workloads > Reliability > Plan for Disaster Recovery (DR) > REL13-BP02 Use defined recovery strategies to meet the recovery objectives p.815"
       ],
-      "answer": "RTO (Recovery Time Objective) is the maximum acceptable delay between the interruption of service and its restoration, setting the acceptable window during which service is unavailable. It is defined by the organization [1]. \n\nRPO (Recovery Point Objective) is the maximum acceptable time since the last data recovery point, determining what is considered an acceptable loss of data between the last recovery point and the interruption of service. It is also defined by the organization [1][2].",
+      "answer": "RTO (Recovery Time Objective) is the maximum acceptable delay between the interruption of service and its restoration, setting the acceptable window during which service is unavailable. [1]\n\nRPO (Recovery Point Objective) is the maximum acceptable time since the last data recovery point, determining what is considered an acceptable loss of data between the last recovery point and the interruption of service. [2]",
       "refused": false,
       "citations": {
-        "valid": 3,
+        "valid": 2,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1169,
-      "output_tokens": 95,
+      "output_tokens": 79,
       "cost_usd": "0",
-      "ttft_ms": 1834.7,
-      "total_ms": 3630.1,
+      "ttft_ms": 2014.6,
+      "total_ms": 3494.3,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -799,7 +799,7 @@
         "0.693 Cloud Workloads > Reliability > Design interactions in a distributed system to mitigate or withstand failures > REL05-BP03 Control and limit retry calls p.663",
         "0.686 Cloud Workloads > Reliability > Design interactions in a distributed system to mitigate or withstand failures > REL05-BP03 Control and limit retry calls p.664"
       ],
-      "answer": "Retries should use exponential backoff with jitter to prevent synchronized traffic spikes and to reduce pressure on the backend. [3] Exponential backoff increases the wait between attempts, reducing pressure on the backend, while jitter randomizes those waits, preventing many clients from retrying in lockstep and creating synchronized traffic spikes. [3]",
+      "answer": "Retries should use exponential backoff with jitter to prevent synchronized traffic spikes. [3] This is because when multiple clients retry in lockstep, it can create a \"retry storm\" that can overwhelm the system. Exponential backoff with jitter helps to randomize the wait times between attempts, spreading the load out and preventing this from happening. [3]",
       "refused": false,
       "citations": {
         "valid": 2,
@@ -809,10 +809,10 @@
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1220,
-      "output_tokens": 67,
+      "output_tokens": 73,
       "cost_usd": "0",
-      "ttft_ms": 1909.7,
-      "total_ms": 3222.4,
+      "ttft_ms": 2014.8,
+      "total_ms": 3470.9,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -833,7 +833,7 @@
         "0.830 Cloud Foundations > Resource and inventory management > FND04-BP05 Establish service quota management p.144",
         "0.813 Cloud Foundations > Resource and inventory management > FND04-BP05 Establish service quota management p.144"
       ],
-      "answer": "To manage service quotas, follow these steps:\n\n* Designate a delegated administrator for Service Quotas, typically your central operations or foundation account, to manage quotas across the organization without holding member-account credentials [2].\n* Inventory current quota consumption using the Quota Monitor for AWS solution to identify quotas close to their limits, quotas that are likely undersized for current workload trajectories, and quotas that are irrelevant to your workloads [2].\n* Review the Service Quotas documentation for each service to understand which limits are adjustable before committing to an architecture that depends on exceeding a default [2].\n* Establish a baseline quota profile per account type, using different baselines for sandbox, development, and production, and apply the production baseline automatically when an account is marked as production [4].\n* Use the Quota Monitor for AWS solution to track Service Quotas, Trusted Advisor service limits checks, and CloudWatch service metrics across an organization, and set thresholds well below 100% (e.g., 70-80%) to alert when consumption approaches configured thresholds [4].\n* Consider using quota request templates to new accounts automatically, including accounts vended through AWS Control Tower Account Factory [4].\n* Regularly review and update quotas to ensure they align with changing workload needs and avoid runaway spend in accounts that have not been secured [4].",
+      "answer": "To manage service quotas, follow these steps:\n\n* Designate a delegated administrator for Service Quotas, typically your central operations or foundation account, to manage quotas across the organization without holding member-account credentials [2].\n* Inventory current quota consumption by deploying the Quota Monitor for AWS solution to aggregate quota and usage data from all accounts and Regions, and review initial findings to identify quotas close to their limits, quotas that are likely undersized for current workload trajectories, and quotas that are irrelevant to your workloads [2].\n* Establish a baseline quota profile per account type, using different baselines for sandbox, development, and production, and apply the production baseline automatically when an account is marked as production [4].\n* Use Service Quotas templates to manage quotas, including quota request templates to new accounts automatically, including accounts vended through AWS Control Tower Account Factory [4].\n* Set thresholds well below 100%, with 70-80% being a common starting point, and use the Quota Monitor for AWS solution to track Service Quotas, Trusted Advisor service limits checks, and CloudWatch service metrics across an organization, alerting when consumption approaches configured thresholds [4].\n* Review the Service Quotas documentation for each service to understand which limits are adjustable before committing to an architecture that depends on exceeding a default [2].\n* Accommodate constraints through architecture, rather than just managing quotas through requests and monitoring [1].",
       "refused": false,
       "citations": {
         "valid": 7,
@@ -843,10 +843,10 @@
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1303,
-      "output_tokens": 265,
+      "output_tokens": 284,
       "cost_usd": "0",
-      "ttft_ms": 2087.4,
-      "total_ms": 7323.1,
+      "ttft_ms": 2203.2,
+      "total_ms": 7609.3,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -867,7 +867,7 @@
         "0.683 Cloud Workloads > Reliability > Test reliability > REL12-BP04 Test resilience using chaos engineering p.800",
         "0.675 Cloud Workloads > Reliability > Test reliability > REL12-BP04 Test resilience using chaos engineering p.803"
       ],
-      "answer": "Chaos engineering is experimenting on a system to build confidence in its ability to withstand turbulent conditions in production. [1]",
+      "answer": "Chaos engineering is experimenting on a system to build confidence in its ability to withstand turbulent conditions in production, as defined by the Principles of Chaos Engineering [2].",
       "refused": false,
       "citations": {
         "valid": 1,
@@ -877,10 +877,10 @@
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1016,
-      "output_tokens": 25,
+      "output_tokens": 33,
       "cost_usd": "0",
-      "ttft_ms": 1603.0,
-      "total_ms": 2050.8,
+      "ttft_ms": 1584.8,
+      "total_ms": 2175.3,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -902,7 +902,7 @@
         "0.740 Cloud Workloads > Cost optimization > Select the correct resource type, size, and number > COST06-BP02 Select resource type, size, and number based on data p.1017",
         "0.738 Cloud Workloads > Cost optimization > Select the correct resource type, size, and number > COST06-BP03 Select resource type, size, and number automatically based on metrics p.1020"
       ],
-      "answer": "To right-size your compute resources, follow these steps:\n\n* Match instance family and configuration to each workload's profile, rather than standardizing on one size for convenience [2].\n* Review right-sizing recommendations on a regular cadence and act on them [2].\n* Reassess sizing when new instance types ship or when the workload's demands shift [2].\n* Base the type, size, and number of resources on evidence of the workload's compute, memory, throughput, and storage demands [4].\n* Size resources from measured or documented workload characteristics, rather than estimates [4].\n* Your sizing decisions should account for multiple dimensions, including compute, memory, storage, and network, not a single dimension [4].\n* Match workloads to purpose-built resource types when the workload profile justifies them [4].\n* Your resource selections should trace back to a named data source that another engineer can review [4].",
+      "answer": "To right-size your compute resources, follow these steps:\n\n* Match instance family and configuration to each workload's profile rather than standardizing on one size for convenience [2].\n* Review right-sizing recommendations on a regular cadence and act on them [2].\n* Reassess sizing when new instance types ship or when the workload's demands shift [2].\n* Base the type, size, and number of resources on evidence of the workload's compute, memory, throughput, and storage demands [4].\n* Size resources from measured or documented workload characteristics rather than estimates [4].\n* Your sizing decisions should account for multiple dimensions, including compute, memory, storage, and network, not a single dimension [4].\n* Match workloads to purpose-built resource types when the workload profile justifies them [4].\n* Your resource selections should trace back to a named data source that another engineer can review [4].",
       "refused": false,
       "citations": {
         "valid": 8,
@@ -912,10 +912,10 @@
       "fact_recall": 0.5,
       "leaked": [],
       "input_tokens": 1184,
-      "output_tokens": 184,
+      "output_tokens": 182,
       "cost_usd": "0",
-      "ttft_ms": 1875.9,
-      "total_ms": 5496.5,
+      "ttft_ms": 1990.5,
+      "total_ms": 6282.4,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -936,7 +936,7 @@
         "0.732 Cloud Foundations > Central observability management > FND03-BP01 Define observability standards and policies p.113",
         "0.695 Cloud Workloads > Sustainability > Optimize resource provisioning > SUS02-BP01 Implement elasticity for variable workloads p.1087"
       ],
-      "answer": "To implement observability for your workload, follow these steps:\n\n* Define your key performance indicators (KPIs) before developing telemetry [1].\n* Implement mechanisms to flatten demand peaks, such as queuing and buffering, to smooth out spikes in workload demand [3].\n* Designate observability accounts that aggregate telemetry from all source accounts through automated cross-account sharing [2].\n* Apply role-based access controls at the observability layer to ensure teams get telemetry without workload account access [2].\n* Establish central, cross-account observability capabilities, including automated cross-account linking through account provisioning pipelines [2].\n* Implement mechanisms to ensure consistent naming conventions, metric namespaces, and tagging strategies across all accounts [2].\n* Continuously evaluate the balance between responsiveness and resource efficiency, and consider adding caching when receiving consistently high volumes of identical incoming requests [3].\n\nBy following these steps, you can implement observability for your workload and ensure that you have a comprehensive understanding of your system's internal workings based on its external outputs.",
+      "answer": "To implement observability for your workload, follow these steps:\n\n* Define your key performance indicators (KPIs) before developing telemetry [1].\n* Implement mechanisms to flatten demand peaks, such as queuing and buffering, to smooth out spikes in workload demand [3].\n* Designate observability accounts that aggregate telemetry from all source accounts through automated cross-account sharing [2].\n* Apply role-based access controls at the observability layer to ensure teams get telemetry without workload account access [2].\n* Establish central, cross-account observability capabilities, such as using Amazon CloudWatch Observability Access Manager (OAM) [2].\n* Implement mechanisms to ensure consistent naming conventions, metric namespaces, and tagging strategies across all accounts [2].\n* Continuously evaluate the balance between responsiveness and resource efficiency, and consider adding caching when receiving consistently high volumes of identical incoming requests [3].",
       "refused": false,
       "citations": {
         "valid": 7,
@@ -946,10 +946,10 @@
       "fact_recall": 0.3333333333333333,
       "leaked": [],
       "input_tokens": 1191,
-      "output_tokens": 203,
+      "output_tokens": 175,
       "cost_usd": "0",
-      "ttft_ms": 1883.3,
-      "total_ms": 5807.8,
+      "ttft_ms": 1992.7,
+      "total_ms": 5495.2,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -970,20 +970,20 @@
         "0.694 Cloud Workloads > Operational excellence > Establish workload supportability for production > OPS05-BP02 Develop and test playbooks to respond to incidents p.353",
         "0.741 Cloud Workloads > Reliability > Implement change > REL08-BP01 Use runbooks for standard activities such as deployment p.717"
       ],
-      "answer": "According to the sources, a runbook and a playbook solve different problems. A runbook is for routine work with a known outcome, such as deploying a release or rotating a certificate, while a playbook is for investigating and responding to non-routine events, where the outcome is unknown at the start. [2]",
+      "answer": "According to the sources, a runbook and a playbook solve different problems. A runbook is for routine work with a known outcome, such as deploying a release or rotating a certificate [2]. A playbook, on the other hand, is for investigating and responding to non-routine events, where the outcome is unknown at the start [2].",
       "refused": false,
       "citations": {
-        "valid": 1,
+        "valid": 2,
         "out_of_range": 0,
         "non_numeric": 0
       },
       "fact_recall": 1.0,
       "leaked": [],
       "input_tokens": 1269,
-      "output_tokens": 64,
+      "output_tokens": 70,
       "cost_usd": "0",
-      "ttft_ms": 2059.9,
-      "total_ms": 3247.4,
+      "ttft_ms": 2232.6,
+      "total_ms": 4542.4,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1016,8 +1016,8 @@
       "input_tokens": 1072,
       "output_tokens": 217,
       "cost_usd": "0",
-      "ttft_ms": 1636.5,
-      "total_ms": 5956.7,
+      "ttft_ms": 1888.7,
+      "total_ms": 6289.0,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1051,7 +1051,7 @@
       "output_tokens": 0,
       "cost_usd": "0",
       "ttft_ms": null,
-      "total_ms": 53.6,
+      "total_ms": 35.3,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1085,7 +1085,7 @@
       "output_tokens": 0,
       "cost_usd": "0",
       "ttft_ms": null,
-      "total_ms": 34.7,
+      "total_ms": 42.2,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1119,7 +1119,7 @@
       "output_tokens": 0,
       "cost_usd": "0",
       "ttft_ms": null,
-      "total_ms": 38.0,
+      "total_ms": 40.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1153,7 +1153,7 @@
       "output_tokens": 0,
       "cost_usd": "0",
       "ttft_ms": null,
-      "total_ms": 28.4,
+      "total_ms": 30.9,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1187,7 +1187,7 @@
       "output_tokens": 0,
       "cost_usd": "0",
       "ttft_ms": null,
-      "total_ms": 29.3,
+      "total_ms": 30.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1220,8 +1220,8 @@
       "input_tokens": 1217,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 1986.7,
-      "total_ms": 2182.0,
+      "ttft_ms": 2169.2,
+      "total_ms": 2375.8,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1254,8 +1254,8 @@
       "input_tokens": 1316,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 2101.3,
-      "total_ms": 2286.3,
+      "ttft_ms": 2376.5,
+      "total_ms": 2589.5,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1288,8 +1288,8 @@
       "input_tokens": 1206,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 1896.6,
-      "total_ms": 2081.3,
+      "ttft_ms": 2079.9,
+      "total_ms": 2314.5,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1322,8 +1322,8 @@
       "input_tokens": 1200,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 1871.9,
-      "total_ms": 2061.0,
+      "ttft_ms": 2586.1,
+      "total_ms": 2800.7,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null
@@ -1356,8 +1356,8 @@
       "input_tokens": 459,
       "output_tokens": 11,
       "cost_usd": "0",
-      "ttft_ms": 594.0,
-      "total_ms": 781.2,
+      "ttft_ms": 776.9,
+      "total_ms": 1018.4,
       "judge_score": null,
       "judge_unsupported": [],
       "error": null

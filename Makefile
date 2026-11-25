@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: eval eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api \
+.PHONY: eval eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
@@ -69,6 +69,18 @@ eval-judge: ## Same, plus an LLM judge for groundedness (slower)
 
 eval-baseline: ## Run and save the result as eval/baseline.json (commit it)
 	uv run kb eval --update-baseline
+
+mcp: ## Run the MCP server over stdio (normally a client launches it, not you)
+	uv run kb-mcp
+
+mcp-http: ## Run the MCP server over streamable HTTP on 127.0.0.1:8765/mcp
+	uv run kb-mcp --transport streamable-http --port 8765
+
+mcp-smoke: ## Start the MCP server over stdio and call every tool: make mcp-smoke [Q="..."]
+	uv run python scripts/mcp_smoke.py $(Q)
+
+mcp-inspector: ## Open the MCP Inspector UI against the server (needs Node)
+	npx -y @modelcontextprotocol/inspector uv run kb-mcp
 
 api: ## Run the API locally on :8000
 	uv run uvicorn kb_api.main:app --reload --port 8000

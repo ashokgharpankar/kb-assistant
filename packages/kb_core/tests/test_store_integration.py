@@ -209,3 +209,26 @@ def test_ensure_schema_upgrades_a_phase_1_table(test_database_url: str) -> None:
         s.close()
         with psycopg.connect(s.dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP TABLE IF EXISTS {t}").format(t=s.table))
+
+
+def test_chunk_window_returns_neighbours_in_reading_order(
+    store: PgVectorStore, sample_pdf: Path, embeddings: WordHashEmbeddings
+) -> None:
+    ingest_path(sample_pdf, store, embeddings, chunk_size=300, chunk_overlap=50)
+    hit = store.search(embeddings.embed_query("multiple Availability Zones recovery"), k=1)[0]
+    window = store.chunk_window(hit.chunk.chunk_id, before=1, after=1)
+    ordinals = [c.ordinal for c in window]
+    assert hit.chunk.ordinal in ordinals
+    assert ordinals == sorted(ordinals)
+    assert {c.document_id for c in window} == {hit.chunk.document_id}
+    assert len(window) <= 3
+    assert store.chunk_window("no-such-chunk") == []
+
+
+def test_documents_lists_titles_and_chunk_counts(
+    store: PgVectorStore, sample_pdf: Path, embeddings: WordHashEmbeddings
+) -> None:
+    ingest_path(sample_pdf, store, embeddings, chunk_size=300, chunk_overlap=50)
+    docs = store.documents()
+    assert [d.title for d in docs] == ["Sample Framework"]
+    assert docs[0].chunks == store.stats().chunks

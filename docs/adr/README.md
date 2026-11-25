@@ -18,8 +18,8 @@ decision gets a new ADR that supersedes the old one.
 | [0021](0021-authentication-cognito.md) | Sign-in with Cognito; the API verifies access tokens | 2 | Accepted |
 | [0010](0010-evaluation.md) | Evaluation framework and quality thresholds | 3 | Accepted |
 | [0011](0011-hybrid-search-reranking.md) | Heading-path chunks, hybrid search and an optional reranker | 4 | Accepted |
-| 0012 | MCP server boundaries | 5 | Planned |
-| 0013 | LangGraph for the agent | 5 | Planned |
+| [0012](0012-mcp-server.md) | An MCP server for retrieval only | 5 | Accepted |
+| [0013](0013-langgraph-for-the-agent.md) | LangGraph for the agent, not CrewAI | 5 | Accepted |
 | 0014 | Fargate for the API, Lambda for ingestion | 6 | Planned |
 | 0015 | Network design without a NAT Gateway | 6 | Planned |
 | 0016 | Observability stack | 7 | Planned |
