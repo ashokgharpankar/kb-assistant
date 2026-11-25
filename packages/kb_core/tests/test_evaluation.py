@@ -356,7 +356,8 @@ class EvalPipeline:
 @pytest.fixture
 def eval_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(cli, "build_store", lambda s: EvalStore())
-    monkeypatch.setattr(cli, "build_pipeline", lambda s, **kw: EvalPipeline())
+    monkeypatch.setattr(cli, "build_answerer", lambda s, **kw: EvalPipeline())
+    monkeypatch.setattr(cli, "get_embeddings", lambda s: WordHashEmbeddings())
     write(
         tmp_path,
         '{"id": "cb", "kind": "answerable", "question": "Design for failure?",'

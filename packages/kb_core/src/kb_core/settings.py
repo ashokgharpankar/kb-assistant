@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # evaluation set; each embedding model needs its own calibration.
     min_similarity: float = Field(default=0.62, ge=0.0, le=1.0)
     answer_max_tokens: int = Field(default=600, ge=50, le=4000)
+    # "pipeline": retrieve once, answer once (Phases 1-4). "agent": a LangGraph loop that
+    # searches again when the answer comes back "not found" (Phase 5b, ADR 0013).
+    answer_mode: Literal["pipeline", "agent"] = "pipeline"
+    # The agent's hard limit on searches per question; bounds cost and latency.
+    agent_max_searches: int = Field(default=3, ge=1, le=5)
 
     # --- data stores ---------------------------------------------------------
     database_url: str = Field(

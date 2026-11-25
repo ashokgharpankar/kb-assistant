@@ -6,8 +6,8 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: eval eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
-        smoke-ollama smoke-bedrock fetch-sources init-db ingest ask stats data-quality duplicates \
+.PHONY: eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
+        smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
 
@@ -64,6 +64,9 @@ coverage: ## Tests with coverage (incl. integration); HTML report in htmlcov/
 eval: ## Score the pipeline on eval/dataset.jsonl (Postgres + Ollama running)
 	uv run kb eval
 
+eval-agent: ## Score the LangGraph agent instead of the pipeline (compares with the baseline)
+	uv run kb eval --mode agent
+
 eval-judge: ## Same, plus an LLM judge for groundedness (slower)
 	uv run kb eval --judge
 
@@ -116,6 +119,9 @@ ingest: ## Load, chunk, embed and store everything in data/raw/ (skips unchanged
 
 ask: ## Ask a question: make ask Q="What is the Reliability pillar?"
 	uv run kb ask "$(Q)"
+
+ask-agent: ## Ask through the agent and show its steps: make ask-agent Q="..."
+	uv run kb ask --mode agent "$(Q)"
 
 stats: ## Show documents and chunks stored
 	uv run kb stats

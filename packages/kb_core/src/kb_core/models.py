@@ -88,6 +88,10 @@ class Answer:
     retrieval_ms: float = 0.0
     time_to_first_token_ms: float | None = None
     total_ms: float = 0.0
+    # How the answer was reached: the pipeline always searches once; the agent (Phase 5b)
+    # may search again and records each step.
+    searches: int = 1
+    steps: list[str] = field(default_factory=list)
 
 
 # --- streaming events ----------------------------------------------------------

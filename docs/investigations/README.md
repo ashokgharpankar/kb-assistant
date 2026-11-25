@@ -15,6 +15,8 @@ reports. Decisions that follow live in `docs/adr/`.
 | [0006](0006-similarity-floor-cannot-separate.md) | 2026-11-23 | 3 | Off-topic questions score above real ones | Cosine similarity measures topic, not answerability | Mitigated (gate on outcomes) |
 | [0007](0007-eval-top-score-bug.md) | 2026-11-24 | 4 | Evaluation misreported top scores; latency false alarms | "First result = best match" assumption; laptop timing noise | Fixed (write-up corrected) |
 | [0008](0008-stale-eval-label.md) | 2026-11-24 | 4 | One question failed retrieval under every setting | Label written from an older edition of the document | Fixed; audit of 5 cases pending |
+| [0009](0009-agent-retries-the-wrong-questions.md) | 2026-11-25 | 5b | Agent scored 100% but improved no answer; +60% tokens | Retry signal can't separate "model failed" from "off-topic"; exact-sentence refusal check | Decided (pipeline stays default); follow-ups open |
+| [0010](0010-stronger-model-followed-an-injection.md) | 2026-11-25 | 5b | A 7B model answered better but followed a "developer mode" injection | Prompt covered injected sources, not an injected question; stronger models comply more | Fixed (prompt rule, measured on both models) |
 
 **Adding one:** next number, the same headings (Summary, Impact or Evidence, Root cause,
 Resolution, What we learned, Interview version, Links), a row in this table, and a link from the

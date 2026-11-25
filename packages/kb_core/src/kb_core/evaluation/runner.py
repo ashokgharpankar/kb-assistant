@@ -45,6 +45,8 @@ class CaseResult:
     cost_usd: str = "0"
     ttft_ms: float | None = None
     total_ms: float = 0.0
+    searches: int = 0
+    steps: list[str] = field(default_factory=list)
     judge_score: int | None = None
     judge_unsupported: list[str] = field(default_factory=list)
     error: str | None = None
@@ -111,6 +113,8 @@ def run_case(
         result.cost_usd = str(answer.cost_usd)
         result.ttft_ms = answer.time_to_first_token_ms
         result.total_ms = answer.total_ms
+        result.searches = answer.searches
+        result.steps = list(answer.steps)
 
         if judge and case.should_answer and not result.refused:
             verdict = judge.grade(case.question, answer.retrieved, answer.text)
@@ -171,6 +175,7 @@ def summarise(
         "cost.total_usd": float(sum(Decimal(c.cost_usd) for c in ok)),
         "cost.tokens_in": float(sum(c.input_tokens for c in ok)),
         "cost.tokens_out": float(sum(c.output_tokens for c in ok)),
+        "cost.searches_per_question": mean([float(c.searches) for c in ok]) if ok else None,
         "latency.ttft_p50_ms": percentile(ttfts, 50),
         "latency.ttft_p95_ms": percentile(ttfts, 95),
         "latency.total_p95_ms": percentile(totals, 95),

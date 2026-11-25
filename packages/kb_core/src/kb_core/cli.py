@@ -19,11 +19,11 @@ from typing import Annotated
 
 import typer
 
-from kb_core.factory import build_pipeline, build_retriever, build_store
+from kb_core.factory import build_answerer, build_retriever, build_store
 from kb_core.ingest import DocumentResult, ingest_path
 from kb_core.models import DoneEvent, RetrievedChunk, TokenEvent
 from kb_core.providers import chat_model_id, embedding_space, get_chat_model, get_embeddings
-from kb_core.settings import get_settings
+from kb_core.settings import Settings, get_settings
 from kb_core.tracing import NoopTracer
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="KB Assistant command line.")
@@ -121,10 +121,13 @@ def ask(
     question: str,
     show_context: Annotated[bool, typer.Option(help="Print the retrieved chunks too")] = False,
     stream: Annotated[bool, typer.Option(help="Print the answer as it is written")] = True,
+    mode: Annotated[
+        str | None, typer.Option(help="pipeline or agent (default: KB_ANSWER_MODE)")
+    ] = None,
 ) -> None:
     """Answer a question from the knowledge base, with citations."""
-    s = get_settings()
-    pipeline = build_pipeline(s)
+    s = _with_mode(get_settings(), mode)
+    pipeline = build_answerer(s)
     answer = None
     printed = False
     typer.echo("")
@@ -152,6 +155,10 @@ def ask(
         f"cost=${answer.cost_usd:.6f} retrieved={len(answer.retrieved)} "
         f"retrieval={answer.retrieval_ms:.0f}ms first_token={ttft} total={answer.total_ms:.0f}ms"
     )
+    if answer.steps:
+        typer.echo("\nagent steps:")
+        for step in answer.steps:
+            typer.echo(f"  - {step}")
     if show_context:
         for i, r in enumerate(answer.retrieved, start=1):
             typer.echo(
@@ -212,6 +219,9 @@ def evaluate(
     gate_latency: Annotated[
         bool, typer.Option(help="Treat slower latency than the baseline as a regression")
     ] = False,
+    mode: Annotated[
+        str | None, typer.Option(help="pipeline or agent (default: KB_ANSWER_MODE)")
+    ] = None,
 ) -> None:
     """Score retrieval, answers, refusals and the similarity floor on a fixed question set.
 
@@ -228,7 +238,7 @@ def evaluate(
         updates["retrieval_k"] = k
     if min_similarity is not None:
         updates["min_similarity"] = min_similarity
-    s = s.model_copy(update=updates)
+    s = _with_mode(s.model_copy(update=updates), mode)
 
     cases = load_dataset(dataset)
     if only:
@@ -238,10 +248,10 @@ def evaluate(
 
     store = build_store(s)
     # Evaluation runs are not user traffic: keep them out of the traces.
-    pipeline = build_pipeline(s, store=store, tracer=NoopTracer())
+    answerer = build_answerer(s, store=store, tracer=NoopTracer())
     # Scored with the same strategy the pipeline uses (hybrid, reranker), but deeper
     # and without the floor, so near misses show up.
-    retriever = build_retriever(s, store, pipeline.embeddings)
+    retriever = build_retriever(s, store, get_embeddings(s))
 
     def retrieve(question: str, n: int) -> list[RetrievedChunk]:
         return retriever.rank(question, n, 0.0)
@@ -257,7 +267,8 @@ def evaluate(
     def progress(result: CaseResult) -> None:
         mark = "ok  " if result.passed(s.retrieval_k) else "FAIL"
         top = f"{result.top_similarity:.3f}" if result.top_similarity is not None else "  -  "
-        typer.echo(f"  {mark} {top}  {result.id}")
+        again = f"  ({result.searches} searches)" if result.searches > 1 else ""
+        typer.echo(f"  {mark} {top}  {result.id}{again}")
 
     created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     config = {
@@ -265,6 +276,8 @@ def evaluate(
         "model": chat_model_id(s),
         "embedding_space": embedding_space(s).table_name,
         "retrieval": retriever.description,
+        "answer_mode": s.answer_mode,
+        "max_searches": s.agent_max_searches if s.answer_mode == "agent" else 1,
         "toc_depth": s.toc_depth,
         "chunk_headers": s.chunk_headers,
         "candidates": s.retrieval_candidates,
@@ -274,12 +287,12 @@ def evaluate(
     }
     typer.echo(
         f"Evaluating {len(cases)} cases with {config['model']} (k={s.retrieval_k}, "
-        f"floor={s.min_similarity}, retrieval={retriever.description})\n"
+        f"floor={s.min_similarity}, retrieval={retriever.description}, answer={s.answer_mode})\n"
     )
     run = run_eval(
         cases,
         retrieve,
-        pipeline.answer,
+        answerer.answer,
         config,
         s.retrieval_k,
         s.min_similarity,
@@ -340,3 +353,11 @@ def toc(
         path = " > ".join(stack)
         if level <= depth and (match is None or match.lower() in path.lower()):
             typer.echo(f"  L{level} p.{page:<5} {path}")
+
+
+def _with_mode(settings: Settings, mode: str | None) -> Settings:
+    if mode is None:
+        return settings
+    if mode not in ("pipeline", "agent"):
+        raise typer.BadParameter("mode must be 'pipeline' or 'agent'")
+    return settings.model_copy(update={"answer_mode": mode})
