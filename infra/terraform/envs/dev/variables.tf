@@ -101,12 +101,18 @@ variable "web_app_urls" {
 }
 
 variable "github_repository" {
-  description = "owner/name of the GitHub repository whose main branch may push images (Phase 6c)."
+  description = <<-EOT
+    The GitHub repository whose main branch may push images (Phase 6c), exactly as it
+    appears in the OIDC token's "sub" claim, without the "repo:" prefix. Repositories
+    with immutable subject claims (default for repos created after mid-2026) use
+    owner@OWNER_ID/name@REPO_ID; older ones use owner/name. Find yours with:
+      gh api repos/OWNER/NAME/actions/oidc/customization/sub
+  EOT
   type        = string
-  default     = "ashokgharpankar/kb-assistant"
+  default     = "ashokgharpankar@15262181/kb-assistant@1459131240"
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
-    error_message = "Use the form owner/name, without wildcards."
+    condition     = can(regex("^[A-Za-z0-9_.-]+(@[0-9]+)?/[A-Za-z0-9_.-]+(@[0-9]+)?$", var.github_repository))
+    error_message = "Use owner/name or owner@id/name@id, without wildcards."
   }
 }

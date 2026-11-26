@@ -36,7 +36,9 @@ data "aws_iam_policy_document" "github_trust" {
     }
 
     # Only this repository, and only workflow runs on main. A pull request (or a fork)
-    # gets a different "sub" claim and is refused. A wildcard here ("repo:*") would let
+    # gets a different "sub" claim and is refused. With immutable subject claims the
+    # sub carries numeric owner and repo IDs, so a deleted-and-recreated repository
+    # with the same name cannot inherit this trust. A wildcard here ("repo:*") would let
     # any GitHub repository in the world assume the role.
     condition {
       test     = "StringEquals"
