@@ -1,0 +1,14 @@
+# A one-node local Kubernetes cluster for Phase 6b.
+#   make k8s-up   creates it (if missing), loads the images and installs the Helm chart.
+# The UI's NodePort (30080) is published on http://localhost:8080, the same URL as the
+# Compose setup, so the Cognito callback URL needs no change.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: kb-assistant
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP

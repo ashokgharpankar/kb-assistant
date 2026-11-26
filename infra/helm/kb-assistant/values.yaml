@@ -1,0 +1,63 @@
+# Defaults for a local kind cluster (Phase 6b). Everything environment-specific is a
+# value; nothing secret has a real default. See docs/phase-6b-kubernetes.md.
+
+images:
+  api:
+    repository: kb-assistant-api
+    tag: local
+    pullPolicy: IfNotPresent # loaded into kind with `kind load docker-image`
+  web:
+    repository: kb-assistant-web
+    tag: local
+    pullPolicy: IfNotPresent
+
+api:
+  replicas: 1
+  # Non-secret settings, passed as environment variables (KB_* as in .env).
+  env:
+    KB_ENV: local
+    KB_LLM_PROVIDER: ollama
+    # Ollama keeps running on the Mac; pods reach it through the host's Docker DNS name.
+    KB_OLLAMA_BASE_URL: http://host.docker.internal:11434
+    KB_ANSWER_MODE: pipeline
+    KB_AUTH_MODE: cognito
+  cognito:
+    userPoolId: "" # set at install time (make k8s-up reads .env)
+    clientId: ""
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1Gi }
+
+web:
+  replicas: 1
+  nodePort: 30080 # published on localhost:8080 by the kind config
+  cognito: # served to the browser as /config.json; public values, not secrets
+    authority: ""
+    clientId: ""
+    domain: ""
+  resources:
+    requests: { cpu: 50m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
+postgres:
+  enabled: true # false: point api at an external database with externalDatabaseUrl
+  image: pgvector/pgvector:pg17
+  database: kb
+  user: kb
+  # Local cluster only. Anywhere real, create the Secret outside Helm (or use
+  # External Secrets / Secrets Manager) and set secrets.create=false.
+  password: kb_kind_only
+  storage: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 512Mi }
+
+externalDatabaseUrl: "" # used when postgres.enabled=false
+
+secrets:
+  create: true # false: provide a Secret named <release>-secrets yourself
+  langfusePublicKey: ""
+  langfuseSecretKey: ""
+
+networkPolicy:
+  enabled: true # web <- anyone, api <- web only, postgres <- api only

@@ -1,0 +1,9 @@
+kb-assistant {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+
+  UI:      http://localhost:8080  (kind publishes NodePort {{ .Values.web.nodePort }} there)
+  Status:  kubectl -n {{ .Release.Namespace }} get pods
+  Logs:    kubectl -n {{ .Release.Namespace }} logs deploy/{{ .Release.Name }}-api -f
+{{- if .Values.postgres.enabled }}
+
+The in-cluster database starts empty. Copy the local one in with:  make k8s-load-data
+{{- end }}

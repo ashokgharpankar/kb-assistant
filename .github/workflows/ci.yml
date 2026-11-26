@@ -33,10 +33,10 @@ jobs:
       KB_TEST_DATABASE_URL: postgresql://kb:kb_ci_only@localhost:5432/kb
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # full history: SonarQube uses it to tell new code from old
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -60,8 +60,8 @@ jobs:
       run:
         working-directory: apps/web
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
@@ -78,11 +78,11 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: hashicorp/setup-terraform@v4
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.15"
-      - uses: terraform-linters/setup-tflint@v6
+      - uses: terraform-linters/setup-tflint@v4
       - run: terraform fmt -check -recursive infra/terraform
       - name: validate bootstrap
         run: |
@@ -98,10 +98,10 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
+      - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -116,6 +116,13 @@ jobs:
         run: >
           uvx checkov==3.4.11 -d . --framework terraform dockerfile
           --compact --quiet --skip-path .venv --skip-path node_modules
+      # The Helm chart (Phase 6b): lint, render, validate against the Kubernetes schemas,
+      # then checkov's Kubernetes rules on what would actually be applied.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.2
+      - name: Helm chart
+        run: make helm-check
 
   # Build, scan and (on main) publish the container images (Phase 6a).
   images:

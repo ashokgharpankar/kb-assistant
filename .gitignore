@@ -39,3 +39,4 @@ node_modules/
 
 # Downloaded source documents (licensed by their publishers; never committed)
 data/raw/
+.helm-rendered.yaml

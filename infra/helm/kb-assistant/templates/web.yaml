@@ -1,0 +1,90 @@
+{{- $component := "web" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    checkov.io/skip1: CKV_K8S_11=No CPU limit on purpose - requests and a memory limit are set
+    checkov.io/skip2: CKV_K8S_43=Local kind images are loaded, not pulled, so there is no registry digest; AWS deploys pin digests (6c)
+    checkov.io/skip3: CKV_K8S_15=IfNotPresent is required for images loaded into kind; AWS deploys use immutable digests (6c)
+    checkov.io/skip4: CKV_K8S_40=uid 101 is fixed by the nginx-unprivileged base image
+  labels:
+    {{- include "kb.labels" . | nindent 4 }}
+    {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 8 }}
+      annotations:
+        checksum/config: {{ toJson .Values.web | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101 # nginx-unprivileged
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: "{{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}"
+          imagePullPolicy: {{ .Values.images.web.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: API_UPSTREAM
+              value: "http://{{ .Release.Name }}-api:8000"
+            - name: VITE_COGNITO_AUTHORITY
+              value: {{ .Values.web.cognito.authority | quote }}
+            - name: VITE_COGNITO_CLIENT_ID
+              value: {{ .Values.web.cognito.clientId | quote }}
+            - name: VITE_COGNITO_DOMAIN
+              value: {{ .Values.web.cognito.domain | quote }}
+          securityContext:
+            {{- include "kb.containerSecurity" . | nindent 12 }}
+            readOnlyRootFilesystem: true
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          # Writable scratch space on a read-only filesystem. emptyDir volumes are writable
+          # by the pod's user (fsGroup), unlike the Compose tmpfs that needed mode=1777.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-web
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kb.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: {{ .Values.web.nodePort }}
