@@ -1,6 +1,7 @@
 # ADR 0002: pgvector locally, S3 Vectors in AWS
 
-**Status:** Accepted, 2026-11-14. Revisit in Phase 4 (hybrid search) and Phase 6 (deploy).
+**Status:** Accepted, 2026-11-14. The AWS half (S3 Vectors) is superseded by
+[ADR 0024](0024-aurora-serverless-for-aws.md) (Phase 6c): hybrid search needs full-text search.
 
 ## Context
 

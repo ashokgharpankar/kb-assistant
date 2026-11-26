@@ -6,7 +6,7 @@ decision gets a new ADR that supersedes the old one.
 | ADR | Title | Phase | Status |
 | --- | --- | --- | --- |
 | [0001](0001-python-for-the-ai-backend.md) | Python for the AI backend | 0 | Accepted |
-| [0002](0002-vector-store.md) | pgvector locally, S3 Vectors in AWS | 0 | Accepted, revisit in Phase 4 |
+| [0002](0002-vector-store.md) | pgvector locally, S3 Vectors in AWS | 0 | Accepted; AWS half superseded by 0024 |
 | [0003](0003-local-first-model-development.md) | Local models for development, Bedrock for evaluation and production | 0 | Accepted |
 | [0004](0004-chunking-strategy.md) | Chunking strategy | 1 | Accepted, revisit in Phase 3 |
 | [0005](0005-storage-and-metadata-model.md) | Storage schema and document metadata model | 1 | Accepted |
@@ -22,8 +22,9 @@ decision gets a new ADR that supersedes the old one.
 | [0011](0011-hybrid-search-reranking.md) | Heading-path chunks, hybrid search and an optional reranker | 4 | Accepted |
 | [0012](0012-mcp-server.md) | An MCP server for retrieval only | 5 | Accepted |
 | [0013](0013-langgraph-for-the-agent.md) | LangGraph for the agent, not CrewAI | 5 | Accepted |
-| 0014 | Fargate for the API, Lambda for ingestion | 6 | Planned |
-| 0015 | Network design without a NAT Gateway | 6 | Planned |
+| [0014](0014-ecs-fargate-for-the-app.md) | ECS Fargate for the app, a one-off task for ingestion | 6c | Proposed |
+| [0015](0015-network-without-nat.md) | Network design without a NAT Gateway | 6c | Proposed |
+| [0024](0024-aurora-serverless-for-aws.md) | Aurora Serverless v2 with pgvector in AWS | 6c | Proposed |
 | 0016 | Observability stack | 7 | Planned |
 | 0017 | Guardrails and prompt-injection handling | 7 | Planned |
 | 0018 | Caching strategy | 8 | Planned |

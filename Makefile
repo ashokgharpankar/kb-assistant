@@ -11,7 +11,7 @@ TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(C
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
         helm-check k8s-up k8s-load-data k8s-status k8s-logs k8s-netpol-test k8s-down \
-        tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
+        tf-bootstrap tf-bootstrap-plan tf-bootstrap-apply tf-backend-hcl tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
@@ -217,10 +217,24 @@ smoke-ollama: ## Check local models respond (free)
 smoke-bedrock: ## Check Bedrock models respond (costs a tiny fraction of a cent)
 	uv run python scripts/smoke_bedrock.py
 
-tf-bootstrap: ## One-time: create the S3 bucket that stores Terraform state
-	terraform -chdir=$(TF_BOOT) init
-	terraform -chdir=$(TF_BOOT) apply
-	@terraform -chdir=$(TF_BOOT) output -raw backend_hcl > $(TF_DEV)/backend.hcl
+tf-bootstrap: ## Brand-new account only: see infra/terraform/bootstrap/versions.tf
+	@echo "The bootstrap stack keeps its state in S3 since Phase 6c."
+	@echo "Existing account: make tf-bootstrap-plan, then make tf-bootstrap-apply."
+	@echo "Brand-new account: follow the comment in $(TF_BOOT)/versions.tf."
+
+# The bootstrap stack's state lives in the bucket it manages (key bootstrap/terraform.tfstate).
+# It reuses the dev backend.hcl for the bucket name and region, with its own key.
+tf-bootstrap-plan: ## Plan the state-bucket stack (6c: should show 6 imports and 1 change)
+	terraform -chdir=$(TF_BOOT) init -reconfigure \
+	  -backend-config=../envs/dev/backend.hcl -backend-config=key=bootstrap/terraform.tfstate
+	terraform -chdir=$(TF_BOOT) plan -out=bootstrap.tfplan
+
+tf-bootstrap-apply: ## Apply exactly the plan reviewed with tf-bootstrap-plan
+	terraform -chdir=$(TF_BOOT) apply bootstrap.tfplan
+	@rm -f $(TF_BOOT)/bootstrap.tfplan
+
+tf-backend-hcl: ## Rebuild envs/dev/backend.hcl from the bootstrap stack's outputs (if it's lost again)
+	terraform -chdir=$(TF_BOOT) output -raw backend_hcl > $(TF_DEV)/backend.hcl
 	@echo "Wrote $(TF_DEV)/backend.hcl"
 
 tf-init: ## Initialise the dev environment against the remote state bucket

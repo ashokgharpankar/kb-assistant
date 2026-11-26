@@ -59,3 +59,13 @@ output "env_web" {
     VITE_COGNITO_DOMAIN=https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.region}.amazoncognito.com
   EOT
 }
+
+output "ecr_repositories" {
+  description = "Image repositories CI pushes to (Phase 6c)."
+  value       = { for k, r in aws_ecr_repository.app : k => r.repository_url }
+}
+
+output "github_ecr_push_role_arn" {
+  description = "Set as the GitHub repository variable AWS_ECR_PUSH_ROLE_ARN (not a secret)."
+  value       = aws_iam_role.github_ecr_push.arn
+}

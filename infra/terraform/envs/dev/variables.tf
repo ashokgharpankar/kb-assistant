@@ -99,3 +99,14 @@ variable "web_app_urls" {
   type        = list(string)
   default     = ["http://localhost:5173/", "http://localhost:8080/"]
 }
+
+variable "github_repository" {
+  description = "owner/name of the GitHub repository whose main branch may push images (Phase 6c)."
+  type        = string
+  default     = "ashokgharpankar/kb-assistant"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
+    error_message = "Use the form owner/name, without wildcards."
+  }
+}
