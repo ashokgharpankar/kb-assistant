@@ -1,5 +1,17 @@
 # Vulnerabilities accepted after review. One ID per line, each with a reason and a
-# date to look again. Empty on purpose: add entries only after reading the advisory.
+# date to look again. Add entries only after reading the advisory.
 #
 # Example:
 # CVE-2026-00000  # not reachable: affects the X parser, which we never call. Recheck 2027-01-31.
+
+# --- nginx 1.30.6 in nginxinc/nginx-unprivileged:stable-alpine (reviewed 2026-11-26) ---
+# Fixed upstream in nginx 1.30.7 / 1.31.9 (2026-11-18); no patched nginx-unprivileged image
+# published yet. Each feature below is off in apps/web/nginx (plain HTTP/1.1 on 8080, no
+# TLS, no mail, stream or resolver; TLS ends at CloudFront/ALB). Remove all six when the
+# base image has 1.30.7+ (pin that tag in apps/web/Dockerfile). Recheck 2026-12-03.
+CVE-2026-113425
+CVE-2026-121810
+CVE-2026-123007
+CVE-2026-123633
+CVE-2026-123634
+CVE-2026-118899
