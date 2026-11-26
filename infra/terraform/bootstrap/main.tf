@@ -1,6 +1,6 @@
-# Bootstrap: the one piece of infrastructure Terraform cannot store remotely,
-# because it IS the remote store. This stack keeps its own state in a local file
-# (bootstrap/terraform.tfstate, git-ignored). Run it once: `make tf-bootstrap`.
+# Bootstrap: the S3 bucket that holds every stack's Terraform state.
+# It was first created with local state (that file was lost: incident 0005). Since
+# Phase 6c its state lives in the bucket itself (see versions.tf and imports.tf).
 
 provider "aws" {
   region = var.region
@@ -65,7 +65,6 @@ resource "aws_s3_bucket_public_access_block" "state" {
 
 # Old state versions pile up. Keep 30 days of history, then delete.
 resource "aws_s3_bucket_lifecycle_configuration" "state" {
-  #checkov:skip=CKV_AWS_300:Real gap. Add abort_incomplete_multipart_upload when the bootstrap state is re-imported (Phase 6c, incident 0005); changing it before then would mean applying without state.
   bucket = aws_s3_bucket.state.id
 
   rule {
@@ -76,6 +75,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 
     noncurrent_version_expiration {
       noncurrent_days = 30
+    }
+  }
+
+  # Failed or abandoned multipart uploads keep their parts (and their cost) forever
+  # unless something cleans them up. Added in 6c, once the state was re-imported.
+  rule {
+    id     = "abort-incomplete-multipart-uploads"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }

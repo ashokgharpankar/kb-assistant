@@ -130,7 +130,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # only used by the push step, which runs on main only
+      packages: write # only used by the push steps, which run on main only
+      id-token: write # OIDC token for AWS (Phase 6c); no AWS keys are stored in GitHub
     strategy:
       fail-fast: false
       matrix:
@@ -178,3 +179,26 @@ jobs:
           docker tag "$IMAGE:${{ github.sha }}" "$IMAGE:main"
           docker push "$IMAGE:${{ github.sha }}"
           docker push "$IMAGE:main"
+      # Phase 6c: the same scanned image to Amazon ECR, via GitHub OIDC (no stored keys).
+      # Skipped until the repository variable AWS_ECR_PUSH_ROLE_ARN is set (terraform
+      # output github_ecr_push_role_arn). ECR tags are immutable: one tag per commit.
+      - name: AWS credentials (OIDC)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_ECR_PUSH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Log in to Amazon ECR
+        id: ecr
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != ''
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Push to Amazon ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_ECR_PUSH_ROLE_ARN != ''
+        env:
+          ECR_IMAGE: ${{ steps.ecr.outputs.registry }}/kb-assistant-dev/${{ matrix.image }}
+        run: |
+          docker tag "$IMAGE:${{ github.sha }}" "$ECR_IMAGE:${{ github.sha }}"
+          docker push "$ECR_IMAGE:${{ github.sha }}"
+          # The digest is what a deployment should pin: a tag is a name, a digest is the bytes.
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$ECR_IMAGE:${{ github.sha }}" | tr ' ' '\n' | grep "$ECR_IMAGE" | head -1)
+          echo "Pushed $digest" | tee -a "$GITHUB_STEP_SUMMARY"
