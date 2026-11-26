@@ -1,0 +1,107 @@
+{{- if .Values.postgres.enabled }}
+{{- $component := "postgres" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    checkov.io/skip1: CKV_K8S_11=No CPU limit on purpose - requests and a memory limit are set
+    checkov.io/skip2: CKV_K8S_43=Public pgvector image pinned by tag for the local cluster; managed Postgres in AWS (6c)
+    checkov.io/skip3: CKV_K8S_15=IfNotPresent keeps the local cluster working offline
+    checkov.io/skip4: CKV_K8S_40=uid 999 is fixed by the official postgres image
+    checkov.io/skip5: CKV_K8S_22=Read-only root filesystem for postgres not tested yet; data and socket dirs are volumes
+  labels:
+    {{- include "kb.labels" . | nindent 4 }}
+    {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 4 }}
+spec:
+  serviceName: {{ .Release.Name }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999 # the postgres user in the official image
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            # The password as a file, not an env var: env vars leak into logs and crash dumps.
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/secrets/postgres/password
+            # A subdirectory, so the volume's lost+found doesn't break initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          securityContext:
+            {{- include "kb.containerSecurity" . | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.user | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: password
+              mountPath: /run/secrets/postgres
+              readOnly: true
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: password
+          secret:
+            secretName: {{ .Release.Name }}-secrets
+            items:
+              - key: POSTGRES_PASSWORD
+                path: password
+            defaultMode: 0440
+  # Each replica gets its own persistent volume; it survives pod restarts and upgrades.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgres
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kb.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "kb.selector" (dict "ctx" . "component" $component) | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+{{- end }}

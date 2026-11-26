@@ -17,7 +17,15 @@ COPY apps/web/ ./
 RUN npm run build
 
 # nginx-unprivileged runs as uid 101 and listens on 8080: no root, no port below 1024.
+# Pin a version tag (e.g. 1.30.7-alpine) once nginx-unprivileged publishes it: on
+# 2026-11-26 the newest was 1.31.7 (2026-10-19), a week after the nginx 1.30.7 / 1.31.9
+# security release. Until then: stable-alpine + the reviewed nginx entries in .trivyignore.
+# (A literal tag, not an ARG: checkov's CKV_DOCKER_7 can't see the tag inside ${...}.)
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
+# Alpine fixes OS libraries (zlib, musl, expat, curl…) faster than base images are
+# rebuilt; take them at build time. nginx itself comes from the tag above.
+USER root
+RUN apk upgrade --no-cache
 COPY apps/web/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY apps/web/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /web/dist /usr/share/nginx/html

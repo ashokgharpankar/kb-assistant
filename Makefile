@@ -10,10 +10,11 @@ TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(C
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
+        helm-check k8s-up k8s-load-data k8s-status k8s-logs k8s-netpol-test k8s-down \
         tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  %-16s %s\n", $$1, $$2}'
 
 doctor: ## Check that all required tools are installed
 	@./scripts/doctor.sh
@@ -119,8 +120,8 @@ app-up: ## Run postgres + api + web as containers: UI on http://localhost:8080
 	$(COMPOSE_APP) up -d --build
 	@echo "UI: http://localhost:8080   API: http://localhost:8000/health"
 
-app-down: ## Stop the app containers (Postgres data is kept)
-	$(COMPOSE_APP) down
+app-down: ## Stop the api and web containers (local Postgres keeps running)
+	$(COMPOSE_APP) rm --stop --force api web
 
 app-logs: ## Follow the api and web container logs
 	$(COMPOSE_APP) logs -f api web
@@ -129,6 +130,60 @@ scan: ## Scan the local images with trivy and the repo with checkov (needs both 
 	trivy image --severity HIGH,CRITICAL --ignore-unfixed kb-assistant-api:local
 	trivy image --severity HIGH,CRITICAL --ignore-unfixed kb-assistant-web:local
 	checkov -d . --framework terraform dockerfile --compact --quiet --skip-path .venv --skip-path node_modules
+
+# --- Kubernetes on kind (Phase 6b) -----------------------------------------------------
+KIND_CLUSTER := kb-assistant
+K8S_CTX      := kind-$(KIND_CLUSTER)
+K8S_NS       := kb-assistant
+HELM_CHART   := infra/helm/kb-assistant
+KUBECTL      := kubectl --context $(K8S_CTX) -n $(K8S_NS)
+HELM_TEST_SET := --set api.cognito.userPoolId=test --set api.cognito.clientId=test
+
+helm-check: ## Lint and render the Helm chart, validate schemas and run checkov (no cluster needed)
+	helm lint $(HELM_CHART) $(HELM_TEST_SET)
+	helm template kb $(HELM_CHART) -n $(K8S_NS) $(HELM_TEST_SET) > .helm-rendered.yaml
+	uvx kubernetes-validate==1.37.0 -k 1.35.0 --strict .helm-rendered.yaml
+	uvx checkov==3.4.11 -f .helm-rendered.yaml --framework kubernetes --compact --quiet
+	@rm -f .helm-rendered.yaml
+
+k8s-up: ## Create the kind cluster if needed, load the images, install the chart (UI: localhost:8080)
+	@kind get clusters 2>/dev/null | grep -qx $(KIND_CLUSTER) || kind create cluster --config infra/k8s/kind-config.yaml
+	kind load docker-image kb-assistant-api:local kb-assistant-web:local --name $(KIND_CLUSTER)
+	kubectl --context $(K8S_CTX) create namespace $(K8S_NS) --dry-run=client -o yaml | kubectl --context $(K8S_CTX) apply -f -
+	kubectl --context $(K8S_CTX) label namespace $(K8S_NS) pod-security.kubernetes.io/enforce=restricted --overwrite
+	@set -a; . ./.env; if [ -f apps/web/.env.local ]; then . apps/web/.env.local; fi; set +a; \
+	helm upgrade --install kb $(HELM_CHART) --kube-context $(K8S_CTX) -n $(K8S_NS) --wait --timeout 5m \
+	  --set api.cognito.userPoolId="$$KB_COGNITO_USER_POOL_ID" \
+	  --set api.cognito.clientId="$$KB_COGNITO_CLIENT_ID" \
+	  --set web.cognito.authority="$$VITE_COGNITO_AUTHORITY" \
+	  --set web.cognito.clientId="$$VITE_COGNITO_CLIENT_ID" \
+	  --set web.cognito.domain="$$VITE_COGNITO_DOMAIN"
+
+k8s-load-data: ## Copy the local Postgres data (chunks and embeddings) into the cluster's database
+	@docker compose -f infra/local/docker-compose.yml ps --status running --services | grep -qx postgres \
+	  || { echo "Local Postgres isn't running: run 'make up' first."; exit 1; }
+	@# pipefail: without it a failed pg_dump would feed psql nothing and still "succeed".
+	bash -o pipefail -c 'docker compose -f infra/local/docker-compose.yml exec -T postgres \
+	  pg_dump -U kb -d kb --no-owner --no-privileges --clean --if-exists \
+	| $(KUBECTL) exec -i kb-postgres-0 -- psql -U kb -d kb -q -v ON_ERROR_STOP=1'
+	$(KUBECTL) exec kb-postgres-0 -- psql -U kb -d kb -c "SELECT count(*) AS chunks FROM kb_chunks_ollama_nomic_embed_text_768"
+
+k8s-status: ## Pods, services and the chart's status in the cluster
+	$(KUBECTL) get pods,svc,pvc,networkpolicy
+	helm status kb --kube-context $(K8S_CTX) -n $(K8S_NS) | head -8
+
+k8s-logs: ## Follow the API logs in the cluster
+	$(KUBECTL) logs deploy/kb-api -f
+
+k8s-netpol-test: ## Prove the NetworkPolicies work: web can reach the API, a stray pod can't
+	@echo "From the web pod (allowed):"
+	@$(KUBECTL) exec deploy/kb-web -- wget -qO- -T 3 http://kb-api:8000/health && echo
+	@echo "From a pod in another namespace (should be blocked):"
+	@kubectl --context $(K8S_CTX) run netpol-probe -n default --rm -i --restart=Never --image=busybox:1.37 -- \
+	  wget -qO- -T 3 http://kb-api.$(K8S_NS):8000/health && echo "REACHABLE: policies are NOT enforced" || echo "blocked, as expected"
+
+k8s-down: ## Delete the kind cluster (and everything in it)
+	kind delete cluster --name $(KIND_CLUSTER)
 
 fetch-sources: ## Download the knowledge-base PDFs into data/raw/
 	uv run python scripts/fetch_sources.py
