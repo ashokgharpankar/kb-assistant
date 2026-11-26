@@ -1,0 +1,5 @@
+# Vulnerabilities accepted after review. One ID per line, each with a reason and a
+# date to look again. Empty on purpose: add entries only after reading the advisory.
+#
+# Example:
+# CVE-2026-00000  # not reachable: affects the X parser, which we never call. Recheck 2027-01-31.

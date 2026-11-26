@@ -23,6 +23,11 @@ locals {
 }
 
 resource "aws_s3_bucket" "state" {
+  # checkov findings accepted for a single-person state bucket (Phase 6a, reviewed):
+  #checkov:skip=CKV_AWS_18:Access logging needs a second bucket; CloudTrail covers who touched state.
+  #checkov:skip=CKV_AWS_144:Cross-region replication doubles cost; versioning covers recovery.
+  #checkov:skip=CKV_AWS_145:SSE-S3 (AES256) is free; a KMS key adds ~$1/month for no extra control here.
+  #checkov:skip=CKV2_AWS_62:No consumer for event notifications on a state bucket.
   bucket = local.bucket_name
 
   lifecycle {
@@ -60,6 +65,7 @@ resource "aws_s3_bucket_public_access_block" "state" {
 
 # Old state versions pile up. Keep 30 days of history, then delete.
 resource "aws_s3_bucket_lifecycle_configuration" "state" {
+  #checkov:skip=CKV_AWS_300:Real gap. Add abort_incomplete_multipart_upload when the bootstrap state is re-imported (Phase 6c, incident 0005); changing it before then would mean applying without state.
   bucket = aws_s3_bucket.state.id
 
   rule {

@@ -1,0 +1,61 @@
+# The app itself as containers, next to the local Postgres (Phase 6a). Start with:
+#   make app-up        (builds the images, then starts postgres + api + web)
+# Ollama keeps running on your Mac; containers reach it via host.docker.internal.
+#
+# Same images CI builds and scans. Configuration comes from the environment, so these
+# images are the ones that later run in Kubernetes (6b) and AWS (6c).
+name: kb-assistant
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    image: kb-assistant-api:local
+    env_file:
+      - path: ../../.env          # your KB_* settings (Cognito IDs, Langfuse keys…)
+        required: false
+    environment:
+      # Inside a container, "localhost" is the container itself: point at the services.
+      KB_DATABASE_URL: postgresql+psycopg://kb:kb_local_only@postgres:5432/kb
+      KB_OLLAMA_BASE_URL: http://host.docker.internal:11434
+      KB_LANGFUSE_HOST: http://host.docker.internal:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    # Least privilege at runtime: read-only filesystem, no Linux capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    image: kb-assistant-web:local
+    env_file:
+      - path: ../../apps/web/.env.local   # VITE_COGNITO_* (served as /config.json)
+        required: false
+    environment:
+      API_UPSTREAM: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    # Writable scratch space on the read-only filesystem. tmpfs mounts are owned by root;
+    # nginx runs as uid 101, so they must be world-writable (sticky bit, like /tmp).
+    # Without mode=1777 the entrypoint can't render the config and nginx starts with
+    # no site: the container stays up, fails its health check and resets connections.
+    tmpfs:
+      - /tmp:mode=1777
+      - /etc/nginx/conf.d:mode=1777   # the entrypoint renders the config template here
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true

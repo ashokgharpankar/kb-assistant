@@ -9,6 +9,7 @@ TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(C
 .PHONY: eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
+        docker-build app-up app-down app-logs scan \
         tf-bootstrap tf-init tf-plan tf-apply tf-check tf-output cognito-env cognito-user
 
 help: ## Show this help
@@ -107,6 +108,27 @@ web-test: ## Web UI tests with coverage
 
 web-build: ## Production build of the web UI into apps/web/dist
 	npm --prefix apps/web run build
+
+COMPOSE_APP = docker compose -f infra/local/docker-compose.yml -f infra/local/docker-compose.app.yml
+
+docker-build: ## Build the API and web images (same Dockerfiles CI uses)
+	docker build -f apps/api/Dockerfile -t kb-assistant-api:local .
+	docker build -f apps/web/Dockerfile -t kb-assistant-web:local .
+
+app-up: ## Run postgres + api + web as containers: UI on http://localhost:8080
+	$(COMPOSE_APP) up -d --build
+	@echo "UI: http://localhost:8080   API: http://localhost:8000/health"
+
+app-down: ## Stop the app containers (Postgres data is kept)
+	$(COMPOSE_APP) down
+
+app-logs: ## Follow the api and web container logs
+	$(COMPOSE_APP) logs -f api web
+
+scan: ## Scan the local images with trivy and the repo with checkov (needs both installed)
+	trivy image --severity HIGH,CRITICAL --ignore-unfixed kb-assistant-api:local
+	trivy image --severity HIGH,CRITICAL --ignore-unfixed kb-assistant-web:local
+	checkov -d . --framework terraform dockerfile --compact --quiet --skip-path .venv --skip-path node_modules
 
 fetch-sources: ## Download the knowledge-base PDFs into data/raw/
 	uv run python scripts/fetch_sources.py
