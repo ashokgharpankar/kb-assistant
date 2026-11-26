@@ -19,7 +19,8 @@ Bedrock access arrives.
 | Part | What | When |
 |---|---|---|
 | **6c-1 (this guide)** | State, ECR, OIDC, CI push | Now; cheap and useful on its own |
-| **6c-2** | VPC, ALB + CloudFront, ECS service, Aurora, Secrets Manager, deploy workflow | Written plan-only; applied when Bedrock works |
+| **6c-2** | VPC, ALB + CloudFront, ECS service, Aurora, Secrets Manager (Part 4) | Written; plan-only until Bedrock works |
+| **6c-3** | Ingestion on Bedrock, deploy workflow, first apply | After Bedrock access |
 
 ---
 
@@ -36,7 +37,9 @@ Bedrock access arrives.
 
 How it works: the job asks GitHub for a signed JWT (`permissions: id-token: write`). The
 token says who is asking, for example
-`sub = repo:ashokgharpankar/kb-assistant:ref:refs/heads/main` and `aud = sts.amazonaws.com`.
+`sub = repo:ashokgharpankar@15262181/kb-assistant@1459131240:ref:refs/heads/main` (GitHub's
+immutable format with owner and repo IDs, the default for repositories created after mid-2026)
+and `aud = sts.amazonaws.com`.
 `configure-aws-credentials` sends it to STS `AssumeRoleWithWebIdentity`. STS checks the
 signature against GitHub's OIDC provider registered in IAM, checks the trust policy
 conditions, and returns temporary credentials.
@@ -116,8 +119,8 @@ Browser ──HTTPS──▶ CloudFront (*.cloudfront.net)
 | CloudFront, Secrets Manager | < $2 | < $1 |
 | Bedrock | Per token | $0 |
 
-6c-1 alone costs well under $1/month. The ALB is the main fixed cost in 6c-2, so the
-dev stack will have a `make tf-park` target.
+6c-1 alone costs well under $1/month. The ALB is the main fixed cost in 6c-2:
+`app_desired_count = 0` parks the tasks, `enable_app = false` removes the whole stack.
 
 ---
 
@@ -243,6 +246,92 @@ and production would use private subnets with endpoints or a NAT. I say that up 
 
 ---
 
+## Part 4: 6c-2, the app stack as code (plan-only)
+
+Everything the app needs in AWS is written and checked, but **off**: `enable_app = false`,
+so `make tf-plan` and `make tf-apply` don't touch it and it costs nothing. `make tf-plan-app`
+previews it against the real account without creating anything.
+
+### What's in `infra/terraform/modules/aws-app`
+
+| File | Resources | Notes |
+|---|---|---|
+| `network.tf` | VPC, 2 public + 2 private subnets, internet gateway, route tables, S3 gateway endpoint | No NAT (ADR 0015); default security group emptied |
+| `security.tf` | 3 security groups: ALB, task, database | CloudFront prefix list → ALB:80 → task:8080 → Aurora:5432 |
+| `alb.tf` | ALB, target group (`/healthz`), listener, header rule | Requests without the secret `X-Origin-Verify` header get 403 |
+| `cloudfront.tf` | Distribution | HTTPS on `*.cloudfront.net`, caching off, all viewer headers except Host |
+| `database.tf` | Aurora PostgreSQL Serverless v2 cluster + instance | 0–2 ACU, pauses after 10 min, password managed by RDS in Secrets Manager |
+| `ecs.tf` | Cluster, log groups, execution + task roles, task definition, service | web + api in one task, read-only root filesystems, circuit-breaker rollback |
+
+Wiring in `envs/dev/app.tf`: the module gets the Cognito IDs and the Phase 0 Bedrock policy;
+Cognito's callback URLs gain the CloudFront address automatically.
+
+### Two roles, two jobs
+
+| Role | Used by | Can do |
+|---|---|---|
+| Execution role | ECS itself, before the app starts | Pull from ECR, write logs, read **only** the database secret |
+| Task role | The application code | Invoke the approved Bedrock models. Nothing else |
+
+The database password never reaches Terraform state, tfvars or the task definition. RDS
+creates it in Secrets Manager; ECS injects `KB_DB_USERNAME` and `KB_DB_PASSWORD` at start-up;
+the API builds its URL from `KB_DB_HOST` and those values (new settings, with tests).
+
+### Two small changes that came out of writing it
+
+- **Dockerfiles declare `VOLUME`s.** Fargate mounts scratch volumes root-owned 0755 unless
+  the image declares the same path with `VOLUME`; then it copies the directory, owner and mode
+  included. Without it, nginx (uid 101) couldn't write `/etc/nginx/conf.d` on a read-only root:
+  the Phase 6a nginx bug, in a new place. Compose and Kubernetes mount over these paths as before.
+- **Images are pinned by digest.** The module refuses a tag (`validation` on `api_image`
+  and `web_image`). `make ecr-digests` prints the newest pushed digests.
+
+### Try it
+
+```bash
+git checkout main && git pull && git checkout -b phase-6c2-app-stack
+unzip -o ~/Downloads/kb-assistant-phase6c2.zip -d .
+make tf-init                 # installs the new module and the random provider
+make tf-check                # fmt, validate, tflint, checkov
+make tf-plan                 # expect: No changes (the app is off)
+make ecr-digests             # the two image digests CI pushed
+make tf-plan-app             # preview only; -lock=false, nothing is created
+```
+
+`tf-plan-app` should show **43 to add** and **1 to change** (the Cognito client gains
+the CloudFront URL), **0 to destroy**. Read it like a design review: every security group
+rule, the two IAM policies, the task definition's environment (no passwords in it).
+
+### Cost when enabled (dev, us-east-1, approximate)
+
+| Item | Per month, running | Parked (`app_desired_count = 0`) |
+|---|---|---|
+| Fargate 0.5 vCPU / 1 GB | ≈ $18 | $0 |
+| Public IPv4 (task) | ≈ $3.65 | $0 |
+| ALB | ≈ $16 + LCUs | ≈ $16 |
+| Aurora Serverless v2 | ≈ $0.12 per ACU-hour while active; paused after 10 min idle | storage ≈ $0.10/GB |
+| CloudFront, Secrets Manager, logs | < $3 | < $1 |
+
+To stop all fixed cost, set `enable_app = false` and apply: Terraform destroys the stack.
+
+### Still to do before applying (6c-3, after Bedrock)
+
+1. Bedrock quotas approved; `make smoke-bedrock` passes.
+2. Ingestion into Aurora with Titan embeddings (512-d): a one-off ECS task or a run from the
+   laptop through a temporary tunnel. The local 768-d Ollama vectors can't be copied.
+3. A deploy workflow: CI registers a new task definition with the new digests and updates
+   the service, using a second OIDC role limited to that service.
+4. First apply, smoke test through CloudFront, then incidents and numbers.
+
+---
+
+## Problems found in this phase
+
+- Incident 0011: 6c was branched before 6b merged, so the chart was missing on the 6c branch.
+- Incident 0012: trivy blocked the web image on new nginx and Alpine CVEs, with no patched base image yet.
+- Incident 0013: the GitHub OIDC provider already existed in the account; now looked up, not owned.
+- Incident 0014: GitHub's immutable OIDC subject (`owner@id/repo@id`) didn't match the trust policy.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -250,6 +339,6 @@ and production would use private subnets with endpoints or a NAT. I say that up 
 | `Error: Backend initialization required` | Old `.terraform` dir from local state | `make tf-bootstrap-plan` already uses `-reconfigure`; rerun |
 | Plan shows the bucket to **add** | Import block id does not match the bucket name | Check `local.bucket_name` vs `aws s3 ls`; do not apply |
 | `EntityAlreadyExists` for the OIDC provider | Provider created earlier for another project (happened here) | The stack now looks the provider up with a data source instead of owning it, so destroying this stack can't break other projects. Check it lists `sts.amazonaws.com` as a client ID |
-| CI: `Not authorized to perform sts:AssumeRoleWithWebIdentity` on main | `github_repository` variable wrong, or the workflow lacks `id-token: write` | Compare the token `sub` in the error with the trust policy |
+| CI: `Not authorized to perform sts:AssumeRoleWithWebIdentity` on main | The token's `sub` doesn't match the trust policy. Repos created after mid-2026 use `repo:owner@ID/name@ID:...` | `gh api repos/OWNER/NAME/actions/oidc/customization/sub`; set `github_repository` to that form (incident 0014) |
 | CI: `ImageTagAlreadyExistsException` | Re-run of a commit whose tag already points at different bytes (a rebuild is not byte-identical) | Expected on re-runs; the first image for that SHA stays. Push a new commit instead |
 | ECR scan status `UNSUPPORTED_IMAGE` | Basic scanning does not support some base OS versions | trivy in CI is the gate; ECR scan is a second opinion |

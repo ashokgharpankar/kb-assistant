@@ -6,3 +6,11 @@ alert_email = "you@example.com"
 
 # Only if Billing > Cost Anomaly Detection shows no existing "AWS services" monitor:
 # enable_anomaly_detection = true
+
+# Phase 6c-2: the app in AWS. Leave off until Bedrock works; `make tf-plan-app` shows
+# the plan without creating anything. Images are pinned by digest (from CI's summary
+# or `make ecr-digests`).
+# enable_app    = true
+# app_api_image = "<account>.dkr.ecr.us-east-1.amazonaws.com/kb-assistant-dev/api@sha256:..."
+# app_web_image = "<account>.dkr.ecr.us-east-1.amazonaws.com/kb-assistant-dev/web@sha256:..."
+# app_desired_count = 1   # 0 parks the app

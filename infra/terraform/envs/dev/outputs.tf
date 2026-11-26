@@ -69,3 +69,14 @@ output "github_ecr_push_role_arn" {
   description = "Set as the GitHub repository variable AWS_ECR_PUSH_ROLE_ARN (not a secret)."
   value       = aws_iam_role.github_ecr_push.arn
 }
+
+output "app" {
+  description = "The AWS app stack (null while enable_app is false)."
+  value = var.enable_app ? {
+    url               = module.app[0].url
+    cluster           = module.app[0].cluster_name
+    service           = module.app[0].service_name
+    database_endpoint = module.app[0].database_endpoint
+    log_groups        = module.app[0].log_groups
+  } : null
+}

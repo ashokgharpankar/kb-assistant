@@ -94,8 +94,8 @@ resource "aws_cognito_user_pool_client" "web" {
   supported_identity_providers         = ["COGNITO"]
 
   # Where Cognito may send the browser back to. Exact matches only.
-  callback_urls = var.web_app_urls
-  logout_urls   = var.web_app_urls
+  callback_urls = local.web_app_urls
+  logout_urls   = local.web_app_urls
 
   # Sign-in happens on the managed login page, which uses SRP (the password is
   # never sent in clear). The UI itself only refreshes tokens.
