@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cognitoLogoutUrl, oidcSettings, readAuthConfig } from './auth'
+import { cognitoLogoutUrl, loadRuntimeEnv, oidcSettings, readAuthConfig } from './auth'
 
 const ENV = {
   VITE_COGNITO_AUTHORITY: 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Pool',
@@ -53,4 +53,44 @@ it('cognitoLogoutUrl ends the Cognito session and returns to the app', () => {
     'https://kb-assistant-dev-ab12cd34.auth.us-east-1.amazoncognito.com/logout' +
       '?client_id=client123&logout_uri=http%3A%2F%2Flocalhost%3A5173%2F',
   )
+})
+
+describe('loadRuntimeEnv', () => {
+  const respond = (body: string, contentType: string, status = 200) =>
+    (() =>
+      Promise.resolve(
+        new Response(body, { status, headers: { 'content-type': contentType } }),
+      )) as unknown as typeof fetch
+
+  it('takes known, non-empty keys from /config.json', async () => {
+    const body = JSON.stringify({
+      VITE_COGNITO_AUTHORITY: ' https://issuer ',
+      VITE_COGNITO_CLIENT_ID: '',
+      VITE_COGNITO_DOMAIN: 'https://login',
+      SOMETHING_ELSE: 'ignored',
+    })
+    await expect(loadRuntimeEnv(respond(body, 'application/json'))).resolves.toEqual({
+      VITE_COGNITO_AUTHORITY: 'https://issuer',
+      VITE_COGNITO_DOMAIN: 'https://login',
+    })
+  })
+
+  it('ignores a missing file, the dev server HTML fallback, bad JSON and network errors', async () => {
+    await expect(loadRuntimeEnv(respond('nope', 'text/plain', 404))).resolves.toEqual({})
+    await expect(loadRuntimeEnv(respond('<!doctype html>', 'text/html'))).resolves.toEqual({})
+    await expect(loadRuntimeEnv(respond('{bad', 'application/json'))).resolves.toEqual({})
+    await expect(loadRuntimeEnv(respond('"text"', 'application/json'))).resolves.toEqual({})
+    const failing = (() => Promise.reject(new Error('offline'))) as unknown as typeof fetch
+    await expect(loadRuntimeEnv(failing)).resolves.toEqual({})
+  })
+
+  it('runtime values override build-time ones', async () => {
+    const body = JSON.stringify({
+      VITE_COGNITO_AUTHORITY: 'https://runtime-issuer',
+      VITE_COGNITO_CLIENT_ID: 'runtime-client',
+      VITE_COGNITO_DOMAIN: 'https://runtime-login',
+    })
+    const env = { ...ENV, ...(await loadRuntimeEnv(respond(body, 'application/json'))) }
+    expect(readAuthConfig(env, 'https://kb.example.com')?.clientId).toBe('runtime-client')
+  })
 })

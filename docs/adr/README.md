@@ -16,6 +16,7 @@ decision gets a new ADR that supersedes the old one.
 | [0009](0009-knowledge-base-sources-and-cleaning.md) | Knowledge-base sources and ingestion cleaning | 1 | Accepted |
 | [0020](0020-web-ui.md) | Web UI: Vite + React, same-origin API, model output as text | 2 | Accepted |
 | [0021](0021-authentication-cognito.md) | Sign-in with Cognito; the API verifies access tokens | 2 | Accepted |
+| [0022](0022-container-images-and-supply-chain.md) | Container images and supply-chain checks | 6a | Accepted |
 | [0010](0010-evaluation.md) | Evaluation framework and quality thresholds | 3 | Accepted |
 | [0011](0011-hybrid-search-reranking.md) | Heading-path chunks, hybrid search and an optional reranker | 4 | Accepted |
 | [0012](0012-mcp-server.md) | An MCP server for retrieval only | 5 | Accepted |

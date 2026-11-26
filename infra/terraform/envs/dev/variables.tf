@@ -93,8 +93,9 @@ variable "developer_principal_arn" {
 variable "web_app_urls" {
   description = <<-EOT
     Where the web UI runs. Cognito only redirects back to these exact URLs after
-    sign-in and sign-out. Phase 6 adds the CloudFront URL.
+    sign-in and sign-out. 5173: the Vite dev server. 8080: the web container
+    (Docker Compose and kind, Phase 6). The AWS URL is added when the app is deployed.
   EOT
   type        = list(string)
-  default     = ["http://localhost:5173/"]
+  default     = ["http://localhost:5173/", "http://localhost:8080/"]
 }

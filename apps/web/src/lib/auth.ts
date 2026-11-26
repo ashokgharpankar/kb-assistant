@@ -17,7 +17,7 @@ export interface AuthConfig {
   redirectUri: string
 }
 
-type Env = Partial<
+export type Env = Partial<
   Record<'VITE_COGNITO_AUTHORITY' | 'VITE_COGNITO_CLIENT_ID' | 'VITE_COGNITO_DOMAIN', string>
 >
 
@@ -66,4 +66,34 @@ export interface Session {
   getAccessToken: () => string | undefined
   signIn: () => void
   signOut: () => void
+}
+
+const RUNTIME_KEYS = [
+  'VITE_COGNITO_AUTHORITY',
+  'VITE_COGNITO_CLIENT_ID',
+  'VITE_COGNITO_DOMAIN',
+] as const
+
+/**
+ * Settings the container provides at runtime (Phase 6): nginx serves /config.json from
+ * environment variables, so one image works in every environment. Missing file, HTML
+ * (the dev server's fallback), bad JSON or a network error all mean "no runtime config":
+ * the build-time VITE_* values are used instead. Only known keys with non-empty string
+ * values are taken.
+ */
+export async function loadRuntimeEnv(fetchFn: typeof fetch = fetch): Promise<Env> {
+  try {
+    const response = await fetchFn('/config.json', { cache: 'no-store' })
+    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) return {}
+    const data: unknown = await response.json()
+    if (typeof data !== 'object' || data === null) return {}
+    const env: Env = {}
+    for (const key of RUNTIME_KEYS) {
+      const value = (data as Record<string, unknown>)[key]
+      if (typeof value === 'string' && value.trim()) env[key] = value.trim()
+    }
+    return env
+  } catch {
+    return {}
+  }
 }
