@@ -9,12 +9,6 @@
 #   VITE_COGNITO_CLIENT_ID   } (the API decides whether that's allowed)
 #   VITE_COGNITO_DOMAIN      }
 
-# Global build argument (must come before the first FROM). Pin a version tag
-# (e.g. 1.30.7-alpine) once nginx-unprivileged publishes it: on 2026-11-26 the newest
-# was 1.31.7 (2026-10-19), a week after the nginx 1.30.7 / 1.31.9 security release.
-# Until then: stable-alpine + the reviewed nginx entries in .trivyignore.
-ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:stable-alpine
-
 FROM node:22-alpine AS build
 WORKDIR /web
 COPY apps/web/package.json apps/web/package-lock.json ./
@@ -23,7 +17,11 @@ COPY apps/web/ ./
 RUN npm run build
 
 # nginx-unprivileged runs as uid 101 and listens on 8080: no root, no port below 1024.
-FROM ${NGINX_IMAGE} AS runtime
+# Pin a version tag (e.g. 1.30.7-alpine) once nginx-unprivileged publishes it: on
+# 2026-11-26 the newest was 1.31.7 (2026-10-19), a week after the nginx 1.30.7 / 1.31.9
+# security release. Until then: stable-alpine + the reviewed nginx entries in .trivyignore.
+# (A literal tag, not an ARG: checkov's CKV_DOCKER_7 can't see the tag inside ${...}.)
+FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 # Alpine fixes OS libraries (zlib, musl, expat, curl…) faster than base images are
 # rebuilt; take them at build time. nginx itself comes from the tag above.
 USER root
