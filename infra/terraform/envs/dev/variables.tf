@@ -94,7 +94,8 @@ variable "web_app_urls" {
   description = <<-EOT
     Where the web UI runs. Cognito only redirects back to these exact URLs after
     sign-in and sign-out. 5173: the Vite dev server. 8080: the web container
-    (Docker Compose and kind, Phase 6). The AWS URL is added when the app is deployed.
+    (Docker Compose and kind, Phase 6). The CloudFront URL is added automatically
+    when enable_app is true (app.tf).
   EOT
   type        = list(string)
   default     = ["http://localhost:5173/", "http://localhost:8080/"]
@@ -115,4 +116,30 @@ variable "github_repository" {
     condition     = can(regex("^[A-Za-z0-9_.-]+(@[0-9]+)?/[A-Za-z0-9_.-]+(@[0-9]+)?$", var.github_repository))
     error_message = "Use owner/name or owner@id/name@id, without wildcards."
   }
+}
+
+# --- Phase 6c-2: the app in AWS (off by default) -------------------------------
+
+variable "enable_app" {
+  description = "Create the AWS app stack (VPC, ALB, CloudFront, ECS, Aurora). Off until Bedrock works."
+  type        = bool
+  default     = false
+}
+
+variable "app_api_image" {
+  description = "API image pinned by digest, e.g. <account>.dkr.ecr.<region>.amazonaws.com/kb-assistant-dev/api@sha256:..."
+  type        = string
+  default     = ""
+}
+
+variable "app_web_image" {
+  description = "Web image pinned by digest, e.g. <account>.dkr.ecr.<region>.amazonaws.com/kb-assistant-dev/web@sha256:..."
+  type        = string
+  default     = ""
+}
+
+variable "app_desired_count" {
+  description = "Running Fargate tasks. 0 parks the app (Aurora pauses on its own when idle)."
+  type        = number
+  default     = 1
 }

@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
+.PHONY: ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
@@ -245,6 +245,15 @@ tf-plan: ## Show what Terraform would change
 
 tf-apply: ## Apply the dev environment
 	terraform -chdir=$(TF_DEV) apply
+
+ecr-digests: ## Print the newest api and web images in ECR, pinned by digest
+	@scripts/ecr-digests.sh $(TF_DEV)
+
+tf-plan-app: ## Preview the AWS app stack (6c-2) without enabling it; nothing is created
+	@scripts/ecr-digests.sh $(TF_DEV) | sed 's/ = /=/' > .app-images.env
+	@. ./.app-images.env && rm -f .app-images.env && \
+	terraform -chdir=$(TF_DEV) plan -input=false -lock=false \
+	  -var enable_app=true -var app_api_image="$$app_api_image" -var app_web_image="$$app_web_image"
 
 tf-output: ## Show Terraform outputs (app role ARN, Cognito IDs and URLs)
 	terraform -chdir=$(TF_DEV) output

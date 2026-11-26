@@ -9,9 +9,10 @@ models (Ollama) and paid Bedrock models. Same code, different bill.
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
+from urllib.parse import quote
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -34,6 +35,21 @@ class Settings(BaseSettings):
     embed_dimensions: int = 512
     # Filled in from `terraform output app_role_arn` once Phase 0 infra exists.
     app_role_arn: str | None = None
+
+    @model_validator(mode="after")
+    def _database_url_from_parts(self) -> Self:
+        if self.db_host is None:
+            return self
+        if not self.db_username or self.db_password is None:
+            raise ValueError("KB_DB_HOST is set, so KB_DB_USERNAME and KB_DB_PASSWORD are required")
+        # Quote both: generated passwords can contain characters that break a URL.
+        user = quote(self.db_username, safe="")
+        password = quote(self.db_password.get_secret_value(), safe="")
+        self.database_url = (
+            f"postgresql+psycopg://{user}:{password}@{self.db_host}:{self.db_port}/"
+            f"{self.db_name}?sslmode={self.db_sslmode}"
+        )
+        return self
 
     @field_validator("embed_dimensions")
     @classmethod
@@ -78,6 +94,15 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://kb:kb_local_only@localhost:5433/kb",
         description="Local pgvector. Port 5433 so it never clashes with Langfuse's Postgres.",
     )
+    # In AWS (Phase 6c) the URL is built from parts: ECS injects the username and
+    # password from the Secrets Manager secret RDS manages, so no full URL containing
+    # the password is ever stored. Setting KB_DB_HOST switches to this mode.
+    db_host: str | None = None
+    db_port: int = 5432
+    db_name: str = "kb"
+    db_username: str | None = None
+    db_password: SecretStr | None = None
+    db_sslmode: Literal["disable", "prefer", "require", "verify-full"] = "require"
 
     # --- authentication (Phase 2c) --------------------------------------------
     # "cognito": the API rejects requests without a valid Cognito access token.

@@ -43,6 +43,10 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     HOME=/tmp
 WORKDIR /app
 USER 10001:10001
+# Writable /tmp for a read-only root filesystem. On ECS Fargate, a bind volume mounted
+# at a path declared here is a copy of the image's /tmp (mode 1777); without VOLUME it
+# would be root-owned 0755 and the app user (10001) couldn't write.
+VOLUME ["/tmp"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]

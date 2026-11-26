@@ -25,7 +25,8 @@ FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 # Alpine fixes OS libraries (zlib, musl, expat, curl…) faster than base images are
 # rebuilt; take them at build time. nginx itself comes from the tag above.
 USER root
-RUN apk upgrade --no-cache
+RUN apk upgrade --no-cache \
+ && install -d -o 101 -g 0 -m 0775 /etc/nginx/conf.d
 COPY apps/web/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY apps/web/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /web/dist /usr/share/nginx/html
@@ -37,6 +38,11 @@ ENV API_UPSTREAM=http://api:8000 \
     VITE_COGNITO_DOMAIN=""
 # The base image already runs as nginx (uid 101); stated here so it's explicit and checked.
 USER 101
+# Writable scratch paths for a read-only root filesystem. On ECS Fargate, a bind volume
+# mounted at a path declared here starts as a copy of it, owner and mode included;
+# without VOLUME it would be root-owned 0755 and nginx (uid 101) couldn't write.
+# Docker Compose (tmpfs) and Kubernetes (emptyDir) mount over these paths as before.
+VOLUME ["/tmp", "/etc/nginx/conf.d"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/healthz || exit 1
