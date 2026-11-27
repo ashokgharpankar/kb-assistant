@@ -74,10 +74,13 @@ def screen_question(question: str) -> Screen:
 
 _REFUSAL = re.compile(
     r"(couldn'?t|could not|can'?t|cannot|unable to|did not|didn'?t)\s+find"
-    r"|not\s+(found|covered|mentioned|addressed|included|described)\s+in\s+(the\s+)?"
-    r"(knowledge\s*base|sources|provided\s+sources|documents|context)"
-    r"|(the\s+)?(sources|documents|context|knowledge\s*base)\s+(do(es)?\s*n[o']t|does not|do not)\s+"
-    r"(contain|mention|cover|include|provide|say|address)"
+    # "not (explicitly) stated in the provided sources" (incident 0009's hedged refusal)
+    r"|not\s+(\w+ly\s+)?(found|covered|mentioned|addressed|included|described|stated|listed"
+    r"|specified|provided)\s+in\s+(the\s+)?(provided\s+|given\s+)?"
+    r"(knowledge\s*base|sources|documents|context)"
+    r"|(the\s+)?(provided\s+|given\s+)?(sources|documents|context|knowledge\s*base)\s+"
+    r"(do(es)?\s*n[o']t|does not|do not)\s+(\w+ly\s+)?"
+    r"(contain|mention|cover|include|provide|say|address|list|state|specify|describe)"
     r"|no\s+(relevant\s+)?information\s+(about|on|regarding|in)",
     re.IGNORECASE,
 )

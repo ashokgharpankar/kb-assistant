@@ -14,6 +14,8 @@ export interface AskState {
   sources: Source[]
   text: string
   result: AskResult | null
+  /** Phase 8b: set while (and after) a larger model answers in place of the first. */
+  escalatedTo: string | null
   error: string | null
   /** HTTP status of a failed request, so the UI can offer "sign in again" on 401. */
   errorStatus: number | null
@@ -23,6 +25,7 @@ type Action =
   | { type: 'start'; question: string }
   | { type: 'sources'; sources: Source[] }
   | { type: 'token'; text: string }
+  | { type: 'escalate'; to: string; reset: boolean }
   | { type: 'done'; result: AskResult }
   | { type: 'error'; error: string; status?: number }
   | { type: 'stopped' }
@@ -33,6 +36,7 @@ export const initialState: AskState = {
   sources: [],
   text: '',
   result: null,
+  escalatedTo: null,
   error: null,
   errorStatus: null,
 }
@@ -45,6 +49,9 @@ export function reducer(state: AskState, action: Action): AskState {
       return { ...state, status: 'generating', sources: action.sources }
     case 'token':
       return { ...state, text: state.text + action.text }
+    case 'escalate':
+      // The first model's refusal is replaced by the larger model's answer.
+      return { ...state, escalatedTo: action.to, text: action.reset ? '' : state.text }
     case 'done':
       // The final text is the server's: it matches the citations exactly.
       return { ...state, status: 'done', result: action.result, text: action.result.answer }
@@ -77,6 +84,12 @@ export function useAsk(getAccessToken: () => string | undefined = () => undefine
         for await (const event of askStream(question, current.signal, getAccessToken())) {
           if (event.type === 'sources') dispatch({ type: 'sources', sources: event.sources })
           else if (event.type === 'token') dispatch({ type: 'token', text: event.text })
+          else if (event.type === 'escalate')
+            dispatch({
+              type: 'escalate',
+              to: event.escalation.to_model,
+              reset: event.escalation.reset,
+            })
           else if (event.type === 'done') dispatch({ type: 'done', result: event.result })
           else dispatch({ type: 'error', error: event.detail })
         }

@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: cache-check cache-clear eval-retrieval eval-index-publish obs-up obs-down obs-reload obs-check metrics ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
+.PHONY: eval-8b budget-today cache-check cache-clear eval-retrieval eval-index-publish obs-up obs-down obs-reload obs-check metrics ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
@@ -65,6 +65,14 @@ coverage: ## Tests with coverage (incl. integration); HTML report in htmlcov/
 
 eval: ## Score the pipeline on eval/dataset.jsonl (Postgres + Ollama running)
 	uv run kb eval
+
+eval-8b: ## Phase 8b experiments, one after another (~1.5 h with qwen2.5:7b on a laptop)
+	-@echo "== A. prompt headings ==";            KB_PROMPT_LAYOUT=heading uv run kb eval
+	-@echo "== B. routing to qwen2.5:7b ==";      KB_ROUTE_ESCALATION_MODEL=qwen2.5:7b uv run kb eval
+	-@echo "== C. qwen2.5:7b for everything ==";  KB_OLLAMA_CHAT_MODEL=qwen2.5:7b KB_PROJECTED_PRICE_MODEL=amazon.nova-lite-v1:0 uv run kb eval
+
+budget-today: ## Today's spend in the ledger (UTC day)
+	@uv run python -c "from kb_core.budget import PgSpendLedger; from kb_core.factory import build_store; from kb_core.settings import get_settings; print(PgSpendLedger(build_store(get_settings())).spent_today())"
 
 eval-agent: ## Score the LangGraph agent instead of the pipeline (compares with the baseline)
 	uv run kb eval --mode agent

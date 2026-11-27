@@ -20,7 +20,7 @@ _LOWER_IS_BETTER = {
     "guardrail.answerable_blocked",
 }
 # Describe the data rather than its quality: shown, never treated as regressions.
-_INFORMATIONAL = {"floor.recommended"}
+_INFORMATIONAL = {"floor.recommended", "routing.escalation_rate", "routing.escalations_passed"}
 
 
 def lower_is_better(name: str) -> bool:
@@ -150,7 +150,9 @@ DESCRIPTIONS = {
     "cost.tokens_in": "input tokens",
     "cost.tokens_out": "output tokens",
     "cost.searches_per_question": "searches per question (1 for the pipeline; the agent may search again)",
-    "cost.projected_usd": "the run's tokens priced on the hosted model (KB_PROJECTED_PRICE_MODEL)",
+    "cost.projected_usd": "the run's tokens priced on KB_PROJECTED_PRICE_MODEL (escalations on ..._LARGE)",
+    "routing.escalation_rate": "questions sent to the larger model after a refusal with strong evidence",
+    "routing.escalations_passed": "escalated cases that then passed their check (answering isn't always right)",
     "cost.projected_usd_per_question": "projected cost per question, the number a budget is built from",
     "latency.ttft_p50_ms": "time to first token, median",
     "latency.ttft_p95_ms": "time to first token, 95th percentile",
@@ -170,7 +172,10 @@ def to_markdown(
         "",
         f"Model `{c.get('model')}` · embeddings `{c.get('embedding_space')}` · "
         f"retrieval `{c.get('retrieval', 'vector')}` · answer `{c.get('answer_mode', 'pipeline')}` · toc_depth={c.get('toc_depth', '–')} · "
-        f"k={k} · floor={c['floor']} · {len(run.cases)} cases ({c.get('dataset')})",
+        f"k={k} · floor={c['floor']} · prompt `{c.get('prompt_layout', 'attributes')}` · "
+        f"priced as `{c.get('priced_as', '–')}` · "
+        f"routing {('→ `' + str(c['route_to']) + '` at ' + str(c.get('route_min_similarity'))) if c.get('route_to') else 'off'} · "
+        f"{len(run.cases)} cases ({c.get('dataset')})",
         "",
     ]
     by_name = {d.name: d for d in deltas or []}

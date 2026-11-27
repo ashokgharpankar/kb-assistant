@@ -30,6 +30,20 @@ export function Metrics({ result }: { result: AskResult }) {
         <dt>Cost</dt>
         <dd>{result.cache ? '$0 (cached)' : cost === 0 ? '$0 (local)' : `$${cost.toFixed(6)}`}</dd>
       </div>
+      {result.escalated_from && (
+        <div>
+          <dt>Model</dt>
+          <dd className="cache-badge">
+            Larger model ({result.escalated_from} couldn&apos;t answer)
+          </dd>
+        </div>
+      )}
+      {result.degraded === 'economy' && (
+        <div>
+          <dt>Mode</dt>
+          <dd>Economy (daily budget nearly used)</dd>
+        </div>
+      )}
       {result.cache && (
         <div>
           <dt>Source</dt>

@@ -194,3 +194,78 @@ def test_a_generated_answer_is_a_cache_miss() -> None:
     before = value("kb_cache_requests_total", result="miss")
     use(Pipeline(answered())).post("/ask", json={"question": "How do I stay up?"})
     assert value("kb_cache_requests_total", result="miss") == before + 1
+
+
+def test_an_escalated_answer_counts_both_models_and_the_escalation() -> None:
+    from dataclasses import replace
+
+    from kb_core.models import Escalation
+
+    first = Escalation("llama3.2", 1289, 12, Decimal(0), "refused_with_evidence")
+    esc = replace(answered(), model="qwen2.5:7b", output_tokens=40, escalation=first)
+    before = {
+        "esc": value(
+            "kb_escalations_total", from_model="llama3.2", to_model="qwen2.5:7b", result="answered"
+        ),
+        "small_out": value("kb_llm_tokens_total", model="llama3.2", direction="output"),
+        "big_out": value("kb_llm_tokens_total", model="qwen2.5:7b", direction="output"),
+    }
+    body = use(Pipeline(esc)).post("/ask", json={"question": "Security design principles?"}).json()
+    assert body["escalated_from"] == "llama3.2" and body["model"] == "qwen2.5:7b"
+    assert body["output_tokens"] == 52  # both calls
+    assert (
+        value(
+            "kb_escalations_total", from_model="llama3.2", to_model="qwen2.5:7b", result="answered"
+        )
+        == before["esc"] + 1
+    )
+    assert (
+        value("kb_llm_tokens_total", model="llama3.2", direction="output")
+        == before["small_out"] + 12
+    )
+    assert (
+        value("kb_llm_tokens_total", model="qwen2.5:7b", direction="output")
+        == before["big_out"] + 40
+    )
+
+
+def test_over_budget_is_its_own_outcome_not_blocked_or_error() -> None:
+    capped = Answer(
+        question="q",
+        text="limit reached",
+        answered_from_context=False,
+        searches=0,
+        blocked_by="budget",
+        degraded="over_budget",
+    )
+    labels = {"endpoint": "ask", "mode": "pipeline"}
+    before = {
+        o: value("kb_answers_total", **labels, outcome=o)
+        for o in ("over_budget", "blocked", "error")
+    }
+    level = value("kb_answers_degraded_total", level="over_budget")
+    body = use(Pipeline(capped)).post("/ask", json={"question": "How do I stay up?"}).json()
+    assert body["degraded"] == "over_budget"
+    assert value("kb_answers_total", **labels, outcome="over_budget") == before["over_budget"] + 1
+    assert value("kb_answers_total", **labels, outcome="blocked") == before["blocked"]
+    assert value("kb_answers_total", **labels, outcome="error") == before["error"]
+    assert value("kb_answers_degraded_total", level="over_budget") == level + 1
+
+
+def test_the_stream_tells_the_client_about_an_escalation() -> None:
+    from kb_core.models import EscalateEvent, TokenEvent
+
+    class Escalating:
+        def answer(self, question: str) -> Answer:  # pragma: no cover
+            raise NotImplementedError
+
+        def stream(self, question: str) -> Iterator[StreamEvent]:
+            yield SourcesEvent([])
+            yield TokenEvent("The sources do not list them.")
+            yield EscalateEvent("llama3.2", "qwen2.5:7b", reset=True)
+            yield TokenEvent("Use AZs.")
+            yield DoneEvent(answered())
+
+    chunks = list(main.event_stream(Escalating(), "q"))
+    escalate = [c for c in chunks if c.startswith("event: escalate")]
+    assert len(escalate) == 1 and '"reset": true' in escalate[0]

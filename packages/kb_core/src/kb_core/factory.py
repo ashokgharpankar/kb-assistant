@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from decimal import Decimal
 from typing import Protocol
 
 from langchain_core.embeddings import Embeddings
@@ -36,11 +37,16 @@ def build_retriever(settings: Settings, store: PgVectorStore, embeddings: Embedd
 
 
 def build_pipeline(
-    settings: Settings, store: PgVectorStore | None = None, tracer: Tracer | None = None
+    settings: Settings,
+    store: PgVectorStore | None = None,
+    tracer: Tracer | None = None,
+    routing: bool = True,
 ) -> RagPipeline:
+    """`routing=False` builds the small-model-only pipeline the spend cap falls back to."""
     store = store or build_store(settings)
     embeddings = get_embeddings(settings)
     retriever = build_retriever(settings, store, embeddings)
+    big = settings.route_escalation_model if routing else None
     return RagPipeline(
         search=store.search,
         rank=retriever.rank,
@@ -50,6 +56,9 @@ def build_pipeline(
         k=settings.retrieval_k,
         min_similarity=settings.min_similarity,
         tracer=tracer or build_tracer(settings),
+        prompt_layout=settings.prompt_layout,
+        escalation=(get_chat_model(settings, big), big) if big else None,
+        escalate_min_similarity=settings.route_min_similarity,
     )
 
 
@@ -86,11 +95,13 @@ def build_answerer(
     tracer: Tracer | None = None,
     cache: bool | None = None,
 ) -> Answerer:
-    """The pipeline or the agent (`KB_ANSWER_MODE`), with the answer cache (`KB_CACHE`,
-    Phase 8a) and behind the guardrails (`KB_GUARDRAILS`, Phase 7b).
+    """The pipeline or the agent (`KB_ANSWER_MODE`), with routing (Phase 8b), the spend
+    cap (`KB_DAILY_BUDGET_USD`, 8b), the answer cache (`KB_CACHE`, 8a), behind the
+    guardrails (`KB_GUARDRAILS`, 7b).
 
-    Order matters: guardrails → cache → model. A blocked question never touches the
-    cache, and a cached answer still gets the grounding check. `cache=False` overrides the
+    Order matters: guardrails → cache → spend cap → model. A blocked question never
+    touches the cache, a cached answer still gets the grounding check, and a cache hit is
+    free, so it still answers when the budget is spent. `cache=False` overrides the
     setting (the evaluation measures the model, not the cache).
     """
     store = store or build_store(settings)
@@ -99,6 +110,8 @@ def build_answerer(
         if settings.answer_mode == "agent"
         else build_pipeline(settings, store, tracer)
     )
+    if settings.daily_budget_usd is not None:
+        inner = build_budget(settings, settings.daily_budget_usd, store, inner, tracer)
     if settings.cache_enabled if cache is None else cache:
         inner = build_cache(settings, store, inner)
     if not settings.guardrails:
@@ -110,7 +123,7 @@ def build_answerer(
 
 def build_cache(settings: Settings, store: PgVectorStore, inner: Answerer) -> Answerer:
     from kb_core.cache import CachedAnswerer, PgAnswerCache
-    from kb_core.rag import PROMPT_VERSION
+    from kb_core.rag import prompt_version
 
     cache = PgAnswerCache(
         store,
@@ -123,11 +136,39 @@ def build_cache(settings: Settings, store: PgVectorStore, inner: Answerer) -> An
     config: dict[str, object] = {
         "model": chat_model_id(settings),
         "embeddings": store.space.table_name,
-        "prompt": PROMPT_VERSION,
+        "prompt": prompt_version(settings.prompt_layout),
         "k": settings.retrieval_k,
         "floor": settings.min_similarity,
         "retrieval": settings.retrieval_mode,
         "reranker": settings.reranker,
         "answer_mode": settings.answer_mode,
+        "route": [settings.route_escalation_model, settings.route_min_similarity],
     }
     return CachedAnswerer(inner, cache, get_embeddings(settings), config)
+
+
+def build_budget(
+    settings: Settings,
+    daily_usd: Decimal,
+    store: PgVectorStore,
+    inner: Answerer,
+    tracer: Tracer | None,
+) -> Answerer:
+    from kb_core.budget import BudgetedAnswerer, PgSpendLedger, cost_basis
+
+    # Economy: the small model alone. The agent has no routing, so it is its own economy.
+    economy: Answerer = (
+        build_pipeline(settings, store, tracer, routing=False)
+        if settings.answer_mode == "pipeline" and settings.route_escalation_model
+        else inner
+    )
+    ledger = PgSpendLedger(store)
+    ledger.ensure_schema()
+    return BudgetedAnswerer(
+        inner,
+        economy,
+        ledger,
+        daily_usd=daily_usd,
+        soft_ratio=settings.budget_soft_ratio,
+        cost_of=cost_basis(settings),
+    )

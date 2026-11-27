@@ -55,7 +55,7 @@ Run `make` to list every command.
 | 5 | MCP server and LangGraph agent | Done |
 | 6 | Containers and supply chain, Helm on kind, Terraform: ECR via GitHub OIDC, ECS Fargate, Aurora | Done (first apply after Bedrock) |
 | 7 | Prometheus + Grafana with SLO burn-rate alerts, guardrails, evaluation in CI | Done |
-| 8 | Cost per question, answer cache (8a); model routing and spend cap (8b) | In progress |
+| 8 | Cost per question, answer cache (8a); model routing and a daily spend cap (8b) | In progress |
 
 ## Documentation
 
@@ -76,6 +76,7 @@ Run `make` to list every command.
 - [Phase 7b guide](docs/phase-7b-guardrails.md)
 - [Phase 7c guide](docs/phase-7c-eval-in-ci.md)
 - [Phase 8a guide](docs/phase-8a-cost-cache.md)
+- [Phase 8b guide](docs/phase-8b-routing-budget.md)
 - [Decisions (ADRs)](docs/adr/README.md) · [Investigations and incidents](docs/investigations/README.md)
 - [Architecture](docs/architecture/README.md)
 - [Architecture decision records](docs/adr/)

@@ -86,12 +86,13 @@ def get_embeddings(settings: Settings) -> Embeddings:
     )
 
 
-def get_chat_model(settings: Settings) -> BaseChatModel:
+def get_chat_model(settings: Settings, model: str | None = None) -> BaseChatModel:
+    """The configured chat model, or `model` from the same provider (Phase 8b routing)."""
     if settings.llm_provider == "ollama":
         from langchain_ollama import ChatOllama
 
         return ChatOllama(
-            model=settings.ollama_chat_model,
+            model=model or settings.ollama_chat_model,
             base_url=settings.ollama_base_url,
             temperature=0.1,
             num_predict=settings.answer_max_tokens,
@@ -101,7 +102,7 @@ def get_chat_model(settings: Settings) -> BaseChatModel:
     from langchain_aws import ChatBedrockConverse
 
     return ChatBedrockConverse(
-        model_id=settings.bedrock_chat_model,
+        model_id=model or settings.bedrock_chat_model,
         region_name=settings.aws_region,
         temperature=0.1,
         max_tokens=settings.answer_max_tokens,

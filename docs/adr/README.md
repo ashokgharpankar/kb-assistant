@@ -29,7 +29,7 @@ decision gets a new ADR that supersedes the old one.
 | [0016](0016-observability-metrics.md) | Prometheus metrics and Grafana dashboards; traces stay in Langfuse | 7a | Accepted |
 | [0017](0017-guardrails.md) | Guardrails in code around every answer; Bedrock Guardrails when available | 7b | Accepted |
 | [0018](0018-answer-cache.md) | An answer cache in Postgres: exact, then semantic behind a measured threshold | 8a | Accepted |
-| 0019 | Model routing by cost and quality | 8 | Planned |
+| [0019](0019-routing-and-spend-cap.md) | Cascade routing on refusal with strong evidence; a daily spend cap that degrades in steps | 8b | Accepted |
 
 Numbers are identifiers, not phase order: planned numbers are reserved, so a
 decision that comes up mid-phase takes the next free number.

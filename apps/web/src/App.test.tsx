@@ -117,6 +117,35 @@ describe('App', () => {
     expect(screen.getByText('$0 (cached)')).toBeInTheDocument()
   })
 
+  it('replaces a refusal when a larger model takes over', async () => {
+    const done = { ...RESULT, model: 'qwen2.5:7b', escalated_from: 'llama3.2' }
+    mockApi(() =>
+      sseResponse([
+        sse('sources', []),
+        sse('token', { text: 'I couldn’t find this' }),
+        sse('escalate', { from_model: 'llama3.2', to_model: 'qwen2.5:7b', reset: true }),
+        sse('token', { text: 'Use AZs [1].' }),
+        sse('done', done),
+      ]),
+    )
+    render(<App session={null} />)
+    await askQuestion()
+    expect(await screen.findByText(/llama3.2 couldn.t answer/)).toBeInTheDocument()
+    expect(screen.queryByText(/I couldn’t find this/)).not.toBeInTheDocument()
+  })
+
+  it('says the daily limit was reached instead of "nothing found"', async () => {
+    const limit = 'The assistant has reached its usage limit for today. Please try again tomorrow.'
+    const done = { ...RESULT, answer: limit, answered_from_context: false, degraded: 'over_budget' }
+    mockApi(() =>
+      sseResponse([sse('sources', []), sse('token', { text: limit }), sse('done', done)]),
+    )
+    render(<App session={null} />)
+    await askQuestion()
+    expect(await screen.findByText(limit)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing close enough/)).not.toBeInTheDocument()
+  })
+
   it('shows a server error', async () => {
     mockApi(() =>
       sseResponse([

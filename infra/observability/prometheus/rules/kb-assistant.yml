@@ -27,8 +27,8 @@ groups:
 
       - record: kb:answer_refusals:ratio_rate30m
         expr: |
-          sum(rate(kb_answers_total{outcome=~"refused|below_floor|blocked"}[30m]))
-          / sum(rate(kb_answers_total{outcome!~"error|cancelled"}[30m]))
+          (sum(rate(kb_answers_total{outcome=~"refused|below_floor|blocked"}[30m])) or vector(0))
+          / sum(rate(kb_answers_total{outcome!~"error|cancelled|over_budget"}[30m]))
 
       - record: kb:answer_ttft_seconds:p95_rate5m
         expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_time_to_first_token_seconds_bucket[5m])))
@@ -50,6 +50,13 @@ groups:
         expr: sum(rate(kb_cache_requests_total{result!="miss"}[1h])) / sum(rate(kb_cache_requests_total[1h]))
       - record: kb:cache_saved_usd:per_hour
         expr: sum(rate(kb_cache_saved_usd_total[1h])) * 3600
+
+      # Phase 8b routing: share of model answers that needed the larger model. A rise
+      # means the small model is struggling (new documents, a model change) and costs grow.
+      - record: kb:escalations:ratio_rate1h
+        expr: |
+          (sum(rate(kb_escalations_total[1h])) or vector(0))
+          / sum(rate(kb_answers_total{outcome=~"answered|refused"}[1h]))
 
   - name: kb-assistant.alerts
     rules:
@@ -101,7 +108,7 @@ groups:
         # regression, or a broken index. Needs a minimum volume to mean anything.
         expr: |
           kb:answer_refusals:ratio_rate30m > 0.5
-          and sum(increase(kb_answers_total{outcome!~"error|cancelled"}[30m])) >= 10
+          and sum(increase(kb_answers_total{outcome!~"error|cancelled|over_budget"}[30m])) >= 10
         for: 10m
         labels:
           severity: ticket
@@ -130,3 +137,33 @@ groups:
         annotations:
           summary: "Model spend is running at ${{ $value | printf \"%.2f\" }} per hour"
           runbook: "Which model (kb_llm_cost_usd_total by model)? Unusual traffic? AWS Budgets is the backstop."
+
+      # Phase 8b spend cap. AWS Budgets is hours late and only alerts; these fire on the
+      # app's own cap, which is enforced before every model call.
+      - alert: KbSpendCapReached
+        # Users get "limit reached" instead of answers: a deliberate outage, still an outage.
+        expr: sum(increase(kb_answers_total{outcome="over_budget"}[10m])) > 0
+        labels:
+          severity: page
+        annotations:
+          summary: "The daily spend cap is reached: questions get \"limit reached\" instead of answers"
+          runbook: "Real traffic or abuse (per-user counts in the API log)? Raise KB_DAILY_BUDGET_USD only on purpose; it resets at 00:00 UTC."
+
+      - alert: KbSpendEconomyMode
+        expr: sum(increase(kb_answers_degraded_total{level="economy"}[30m])) > 0
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Over the soft spend limit: routing is off, the small model answers alone"
+          runbook: "Check kb_llm_cost_usd_total by model and kb:escalations:ratio_rate1h; is the cap set right for today's traffic?"
+
+      - alert: KbEscalationRateHigh
+        expr: |
+          kb:escalations:ratio_rate1h > 0.3
+          and sum(increase(kb_answers_total{outcome=~"answered|refused"}[1h])) >= 20
+        for: 30m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of answers needed the larger model"
+          runbook: "The small model is refusing with good evidence: new documents, a prompt or model change? Run make eval."

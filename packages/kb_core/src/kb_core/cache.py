@@ -40,6 +40,7 @@ from kb_core.models import (
     Chunk,
     Citation,
     DoneEvent,
+    Escalation,
     RetrievedChunk,
     SourcesEvent,
     StreamEvent,
@@ -95,6 +96,8 @@ def answer_to_json(answer: Answer) -> dict[str, Any]:
     data["cost_usd"] = str(answer.cost_usd)
     data["cost_saved_usd"] = str(answer.cost_saved_usd)
     data["grounding"] = None  # recomputed by the guardrails on every answer
+    if answer.escalation is not None:
+        data["escalation"]["cost_usd"] = str(answer.escalation.cost_usd)
     return data
 
 
@@ -110,7 +113,15 @@ def answer_from_json(data: dict[str, Any]) -> Answer:
         )
         for r in data.get("retrieved", [])
     ]
-    fields = {k: v for k, v in data.items() if k not in {"retrieved", "citations", "grounding"}}
+    esc = data.get("escalation")
+    escalation = (
+        Escalation(**{**esc, "cost_usd": Decimal(esc.get("cost_usd", "0"))}) if esc else None
+    )
+    fields = {
+        k: v
+        for k, v in data.items()
+        if k not in {"retrieved", "citations", "grounding", "escalation"}
+    }
     return Answer(
         **{
             **fields,
@@ -119,6 +130,7 @@ def answer_from_json(data: dict[str, Any]) -> Answer:
             "retrieved": retrieved,
             "citations": [Citation(**c) for c in data.get("citations", [])],
             "grounding": None,
+            "escalation": escalation,
         }
     )
 
@@ -312,7 +324,9 @@ class CachedAnswerer:
         for event in self.inner.stream(question):
             if isinstance(event, DoneEvent):
                 answer = event.answer
-                if answer.model and (answer.input_tokens or answer.output_tokens):
+                # Only answers that cost a model call, and never a degraded one (the spend
+                # cap's economy mode): it must not outlive the budget day that caused it.
+                if answer.model and answer.total_output_tokens and answer.degraded is None:
                     self.cache.store(namespace, question, vector(), answer)
             yield event
 
@@ -333,8 +347,9 @@ class CachedAnswerer:
                 input_tokens=0,
                 output_tokens=0,
                 cost_usd=Decimal(0),
-                cost_saved_usd=cached.cost_usd,
-                tokens_saved=cached.input_tokens + cached.output_tokens,
+                escalation=None,  # its cost was paid when the answer was first generated
+                cost_saved_usd=cached.total_cost_usd,
+                tokens_saved=cached.total_input_tokens + cached.total_output_tokens,
                 cache=hit.kind,
                 cache_similarity=hit.similarity,
                 retrieval_ms=elapsed,

@@ -89,6 +89,10 @@ def test_screen_lets_ordinary_questions_through(question: str) -> None:
         "I could not find information about this in the provided sources.",
         "The sources don't mention Azure Front Door.",
         "This is not covered in the knowledge base.",
+        # incident 0009's hedge, which escaped until Phase 8b routing needed to see it
+        "The specific design principles of the Security pillar are not explicitly stated in "
+        "the provided sources.",
+        "The provided sources do not explicitly list these principles.",
         "",
     ],
 )
@@ -98,6 +102,18 @@ def test_refusals_in_any_phrasing(text: str) -> None:
 
 def test_a_cited_answer_is_not_a_refusal_even_with_a_caveat() -> None:
     text = "Use multiple Availability Zones [1]. The sources don't mention exact failover times."
+    assert not is_refusal(text, source_count=2)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Security is not stated as optional; implement a strong identity foundation.",
+        "Design principles are listed in the pillar: implement a strong identity foundation.",
+        "Traceability is described in the sources as essential.",
+    ],
+)
+def test_real_answers_with_similar_words_are_not_refusals(text: str) -> None:
     assert not is_refusal(text, source_count=2)
 
 

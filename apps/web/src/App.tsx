@@ -41,7 +41,9 @@ export default function App({ session }: Props) {
     () => (state.result ? new Set(state.result.citations.map((c) => c.number)) : null),
     [state.result],
   )
-  const notFound = state.status === 'done' && state.result && !state.result.answered_from_context
+  const overBudget = state.status === 'done' && state.result?.degraded === 'over_budget'
+  const notFound =
+    !overBudget && state.status === 'done' && state.result && !state.result.answered_from_context
   // Phase 7b: say so when the answer isn't fully backed by its sources, instead of hiding it.
   const weakGrounding =
     !notFound &&
@@ -88,7 +90,9 @@ export default function App({ session }: Props) {
             <article className="answer">
               <h2 className="question">{state.question}</h2>
               <p className="status" role="status">
-                {STATUS_TEXT[state.status] ?? ''}
+                {state.status === 'generating' && state.escalatedTo
+                  ? 'Checking with a larger model…'
+                  : (STATUS_TEXT[state.status] ?? '')}
               </p>
               {state.status === 'error' && (
                 <div className="error" role="alert">
@@ -112,7 +116,11 @@ export default function App({ session }: Props) {
                   )}
                 </div>
               )}
-              {notFound ? (
+              {overBudget ? (
+                <p className="not-found" role="note">
+                  {state.result?.answer}
+                </p>
+              ) : notFound ? (
                 <p className="not-found">
                   The knowledge base has nothing close enough to this question, so no answer was
                   generated.

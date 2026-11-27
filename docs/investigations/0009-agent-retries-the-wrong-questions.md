@@ -63,7 +63,9 @@ of them ended refused anyway, after 3 searches each. Zero answers improved.
    answer (`shared-responsibility`), and one good answer the matcher missed
    (`design-for-failure-paraphrase` says "failing over"; the label says "fail over"). Fix the
    labels and matching first, then require some fact recall to pass.
-2. **Detect refusals structurally**, not by sentence: have the model return
+2. *(Phase 7b: refusal detection by meaning. Phase 8b: the hedge "…are not explicitly
+   stated in the provided sources" still escaped it, found while building routing; fixed.)*
+   **Detect refusals structurally**, not by sentence: have the model return
    `{"found": bool, "answer": …}` (needs a model that follows output formats; Bedrock).
 3. **Test the generation hypothesis:** the same questions with `qwen2.5:7b` or a Bedrock
    model, in pipeline mode first.
