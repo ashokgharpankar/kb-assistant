@@ -40,6 +40,10 @@ first token, refusals, tokens and cost per answer, and retrieval quality drift.
   The buckets are chosen to cover both a slow local model and a fast hosted one.
 - Stream failures return HTTP 200 (the headers are already sent), so the error SLI counts
   answer outcomes, not status codes. HTTP 5xx is a separate panel.
+- Outcomes: answered, refused, below_floor, blocked, error and **cancelled** (the browser left
+  mid-stream). Every request lands in exactly one; the error SLI is
+  `error / (all − cancelled)`, so a user pressing Stop spends no error budget. Added in 8a
+  after a reader's comment (incident 0016).
 - One process per container assumed. Several uvicorn workers would need
   prometheus-client's multiprocess mode.
 - In AWS: Amazon Managed Service for Prometheus + Amazon Managed Grafana, or CloudWatch.

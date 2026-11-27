@@ -9,7 +9,7 @@ SLO, with the alert rules tested like code.
 **You finish with:**
 
 - `/metrics` on the API: HTTP (rate, errors, duration) and answer metrics (time to first token,
-  outcome, tokens, cost, retrieval time, best similarity, searches, disconnects).
+  outcome, tokens, cost, retrieval time, best similarity, searches; cancelled streams are outcome `cancelled` since 8a, incident 0016).
 - Prometheus scraping the API container, with 10 recording rules and 6 alerts.
 - `promtool` unit tests for the alerts, run in CI (`make obs-check`).
 - A provisioned Grafana dashboard, "KB Assistant: overview", stored as JSON in the repo.

@@ -30,6 +30,7 @@ PRICES: dict[str, ModelPrice] = {
     "amazon.titan-embed-text-v2:0": ModelPrice(Decimal("0.02")),
     # Local models cost nothing per token (you pay in laptop battery instead)
     "llama3.2": ModelPrice(Decimal(0)),
+    "qwen2.5:7b": ModelPrice(Decimal(0)),
     "nomic-embed-text": ModelPrice(Decimal(0)),
 }
 

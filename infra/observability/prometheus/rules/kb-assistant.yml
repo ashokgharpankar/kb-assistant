@@ -11,22 +11,24 @@ groups:
       - record: kb:answers:rate5m
         expr: sum(rate(kb_answers_total[5m]))
 
+      # Cancelled streams (the user pressed Stop or closed the tab) are excluded from the
+      # denominator: not a fault, and the request never got a result to judge.
       # "or vector(0)": with no errors yet there is no error series at all, and the
       # ratio would be empty ("No data") instead of 0%.
 
       - record: kb:answer_errors:ratio_rate5m
-        expr: (sum(rate(kb_answers_total{outcome="error"}[5m])) or vector(0)) / sum(rate(kb_answers_total[5m]))
+        expr: (sum(rate(kb_answers_total{outcome="error"}[5m])) or vector(0)) / sum(rate(kb_answers_total{outcome!="cancelled"}[5m]))
       - record: kb:answer_errors:ratio_rate30m
-        expr: (sum(rate(kb_answers_total{outcome="error"}[30m])) or vector(0)) / sum(rate(kb_answers_total[30m]))
+        expr: (sum(rate(kb_answers_total{outcome="error"}[30m])) or vector(0)) / sum(rate(kb_answers_total{outcome!="cancelled"}[30m]))
       - record: kb:answer_errors:ratio_rate1h
-        expr: (sum(rate(kb_answers_total{outcome="error"}[1h])) or vector(0)) / sum(rate(kb_answers_total[1h]))
+        expr: (sum(rate(kb_answers_total{outcome="error"}[1h])) or vector(0)) / sum(rate(kb_answers_total{outcome!="cancelled"}[1h]))
       - record: kb:answer_errors:ratio_rate6h
-        expr: (sum(rate(kb_answers_total{outcome="error"}[6h])) or vector(0)) / sum(rate(kb_answers_total[6h]))
+        expr: (sum(rate(kb_answers_total{outcome="error"}[6h])) or vector(0)) / sum(rate(kb_answers_total{outcome!="cancelled"}[6h]))
 
       - record: kb:answer_refusals:ratio_rate30m
         expr: |
           sum(rate(kb_answers_total{outcome=~"refused|below_floor|blocked"}[30m]))
-          / sum(rate(kb_answers_total{outcome!="error"}[30m]))
+          / sum(rate(kb_answers_total{outcome!~"error|cancelled"}[30m]))
 
       - record: kb:answer_ttft_seconds:p95_rate5m
         expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_time_to_first_token_seconds_bucket[5m])))
@@ -41,6 +43,13 @@ groups:
         expr: sum(rate(kb_llm_cost_usd_total[1h])) * 3600
       - record: kb:llm_cost_usd:per_answer_1h
         expr: sum(rate(kb_llm_cost_usd_total[1h])) / sum(rate(kb_answers_total{outcome=~"answered|refused"}[1h]))
+
+      # Phase 8a answer cache: share of lookups answered without a model call, and what
+      # that avoided. (Hit ratio is "no data" until the first lookup, which is honest.)
+      - record: kb:cache_hit:ratio_rate1h
+        expr: sum(rate(kb_cache_requests_total{result!="miss"}[1h])) / sum(rate(kb_cache_requests_total[1h]))
+      - record: kb:cache_saved_usd:per_hour
+        expr: sum(rate(kb_cache_saved_usd_total[1h])) * 3600
 
   - name: kb-assistant.alerts
     rules:
@@ -92,7 +101,7 @@ groups:
         # regression, or a broken index. Needs a minimum volume to mean anything.
         expr: |
           kb:answer_refusals:ratio_rate30m > 0.5
-          and sum(increase(kb_answers_total{outcome!="error"}[30m])) >= 10
+          and sum(increase(kb_answers_total{outcome!~"error|cancelled"}[30m])) >= 10
         for: 10m
         labels:
           severity: ticket

@@ -5,7 +5,7 @@ Framework and engineering runbooks, with citations. Built the way a production
 team would build it: evaluated, observable, cost-tracked and deployed with
 Terraform.
 
-**Status:** Phases 1–2c done (local RAG with citations, streaming API with tracing, React UI, Cognito sign-in); Phase 3 evaluation done; Phase 4 retrieval in progress. Bedrock waiting on an AWS quota increase.
+**Status:** Phases 0–7 done: local RAG with citations, streaming API with tracing, React UI with Cognito sign-in, evaluation harness with a CI gate, hybrid search, MCP server and LangGraph agent, containers, Helm on kind, Terraform for AWS (ECS Fargate, Aurora Serverless, CloudFront), Prometheus and Grafana with SLO alerts, guardrails. Phase 8 (cost and caching) in progress. The AWS deploy waits on a Bedrock quota increase.
 
 ## Stack
 
@@ -48,14 +48,14 @@ Run `make` to list every command.
 |---|---|---|
 | 0 | Setup, FinOps guardrails, least-privilege IAM | Done |
 | 1 | RAG with citations, fully local | Done |
-| 1.5 | Quality gate: coverage, Dependabot (SonarQube Cloud ready, switched on later) | Done |
-| 2 | 2a streaming + tracing, 2b React UI, 2c Cognito sign-in (done); Bedrock switch waiting on quota | In progress |
-| 3 | Evaluation harness: golden set, kb eval, floor calibration, baseline and gate | Done |
-| 4 | Heading-path chunks, hybrid search, reranking | In progress |
-| 5 | MCP server and LangGraph agent (ADR: LangGraph vs CrewAI) | |
-| 6 | Terraform, Fargate, Cognito, CI/CD; Kubernetes with Helm on kind | |
-| 7 | Tracing, guardrails, evaluation gate; Prometheus + Grafana | |
-| 8 | Cost per query, caching, model routing, load test | |
+| 1.5 | Quality gate: coverage, Dependabot | Done |
+| 2 | Streaming + tracing, React UI, Cognito sign-in | Done (Bedrock switch waiting on quota) |
+| 3 | Evaluation harness: golden set, floor calibration, baseline and gate | Done |
+| 4 | Heading-path chunks, hybrid search, reranking | Done |
+| 5 | MCP server and LangGraph agent | Done |
+| 6 | Containers and supply chain, Helm on kind, Terraform: ECR via GitHub OIDC, ECS Fargate, Aurora | Done (first apply after Bedrock) |
+| 7 | Prometheus + Grafana with SLO burn-rate alerts, guardrails, evaluation in CI | Done |
+| 8 | Cost per question, answer cache (8a); model routing and spend cap (8b) | In progress |
 
 ## Documentation
 
@@ -67,8 +67,16 @@ Run `make` to list every command.
 - [Phase 2c guide](docs/phase-2c-cognito.md)
 - [Phase 3 guide](docs/phase-3-evaluation.md)
 - [Phase 4 guide](docs/phase-4-retrieval.md)
-- [Decisions (ADRs)](docs/adr/README.md) · [Investigations](docs/investigations/)
+- [Phase 5a guide](docs/phase-5a-mcp.md)
+- [Phase 5b guide](docs/phase-5b-agent.md)
+- [Phase 6a guide](docs/phase-6a-containers.md)
+- [Phase 6b guide](docs/phase-6b-kubernetes.md)
+- [Phase 6c guide](docs/phase-6c-aws.md)
+- [Phase 7a guide](docs/phase-7a-observability.md)
+- [Phase 7b guide](docs/phase-7b-guardrails.md)
+- [Phase 7c guide](docs/phase-7c-eval-in-ci.md)
+- [Phase 8a guide](docs/phase-8a-cost-cache.md)
+- [Decisions (ADRs)](docs/adr/README.md) · [Investigations and incidents](docs/investigations/README.md)
 - [Architecture](docs/architecture/README.md)
-- [Investigations](docs/investigations/) (how problems were diagnosed)
 - [Architecture decision records](docs/adr/)
 - [Build log](docs/build-log.md)

@@ -95,6 +95,11 @@ class AskResponse(BaseModel):
     grounding_score: float | None = None
     unsupported: list[str] = []
     unknown_terms: list[str] = []
+    # Phase 8a answer cache: "exact" or "semantic" when served from the cache (no model
+    # call), the similarity of the cached question, and what the model call would have cost.
+    cache: str | None = None
+    cache_similarity: float | None = None
+    cost_saved_usd: str = "0"
 
 
 class Pipeline(Protocol):
@@ -155,6 +160,11 @@ def to_response(answer: Answer) -> AskResponse:
         grounding_score=None if g is None or g.score is None else round(g.score, 3),
         unsupported=[] if g is None else list(g.unsupported),
         unknown_terms=[] if g is None else list(g.unknown_terms),
+        cache=answer.cache,
+        cache_similarity=None
+        if answer.cache_similarity is None
+        else round(answer.cache_similarity, 4),
+        cost_saved_usd=str(answer.cost_saved_usd),
     )
 
 
@@ -169,7 +179,7 @@ def ask(body: AskRequest, pipeline: PipelineDep, user: CurrentUser) -> AskRespon
         log.exception("ask failed")  # full detail in our logs, generic message to the client
         metrics.record_error("ask", answer_mode())
         raise HTTPException(status_code=503, detail="answering is temporarily unavailable") from exc
-    metrics.record_answer(answer, "ask", answer_mode())
+    metrics.record_answer(answer, "ask", answer_mode(), get_settings().cache_enabled)
     return to_response(answer)
 
 
@@ -211,7 +221,9 @@ def event_stream(pipeline: Pipeline, question: str) -> Iterator[str]:
             elif isinstance(event, TokenEvent):
                 yield sse("token", {"text": event.text})
             elif isinstance(event, DoneEvent):
-                metrics.record_answer(event.answer, "stream", answer_mode())
+                metrics.record_answer(
+                    event.answer, "stream", answer_mode(), get_settings().cache_enabled
+                )
                 yield sse("done", to_response(event.answer).model_dump())
     except Exception:
         # Headers (200) are already sent once streaming starts, so errors travel as an event.
@@ -227,18 +239,25 @@ class Disconnectable(Protocol):
     async def is_disconnected(self) -> bool: ...
 
 
-async def stop_on_disconnect(request: Disconnectable, events: Iterator[str]) -> AsyncIterator[str]:
+async def stop_on_disconnect(
+    request: Disconnectable, events: Iterator[str], mode: str = "pipeline"
+) -> AsyncIterator[str]:
     """Stop generating when the browser goes away (Stop button, closed tab).
 
     Without this, an abandoned answer keeps running to the end, and its output
     tokens are still paid for. The pipeline is synchronous, so each step runs in
-    a worker thread; between steps we check the connection.
+    a worker thread; between steps we check the connection. Closing the generator
+    closes the model client's HTTP stream (tested against a fake Ollama server).
+
+    A cancelled stream is counted as outcome="cancelled", not error: the user
+    changing their mind is not a fault and mustn't spend the error budget.
     """
     try:
         async for chunk in iterate_in_threadpool(events):
             if await request.is_disconnected():
-                log.info("client disconnected; generation stopped early")
-                metrics.DISCONNECTS.inc()
+                if not chunk.startswith("event: done"):  # finished answers aren't cancelled
+                    log.info("client disconnected; generation stopped early")
+                    metrics.record_cancelled("stream", mode)
                 break
             yield chunk
     finally:
@@ -260,7 +279,7 @@ def ask_stream(
     # plain 401, not an error event inside a 200 stream.
     log.info("ask/stream user=%s", user.sub)
     return StreamingResponse(
-        stop_on_disconnect(request, event_stream(pipeline, body.question)),
+        stop_on_disconnect(request, event_stream(pipeline, body.question), answer_mode()),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

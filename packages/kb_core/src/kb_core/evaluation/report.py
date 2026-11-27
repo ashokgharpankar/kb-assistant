@@ -41,6 +41,13 @@ class Delta:
         return self.current - self.baseline
 
 
+# Metrics measured as noisier than the default tolerance allows, with the evidence.
+# answer.grounding_score: lexical check over ~24 answers from a 3B model on CPU; the same
+# configuration read 57%, 49% and 53% on three runs (Phase 8a). One reworded answer
+# moves it ~4 points, so 5 points flags noise as a regression.
+METRIC_TOLERANCE: dict[str, float] = {"answer.grounding_score": 0.10}
+
+
 def compare(
     current: Metrics,
     baseline: Metrics,
@@ -64,9 +71,9 @@ def compare(
             if name.startswith(_LOWER_IS_BETTER_PREFIXES):
                 regressed = cur > base * (1 + cost_latency_tolerance) and cur - base > 1e-9
             elif lower_is_better(name):
-                regressed = cur - base > tolerance
+                regressed = cur - base > METRIC_TOLERANCE.get(name, tolerance)
             else:
-                regressed = base - cur > tolerance
+                regressed = base - cur > METRIC_TOLERANCE.get(name, tolerance)
         deltas.append(Delta(name, base, cur, regressed))
     return deltas
 
@@ -108,7 +115,7 @@ def fmt(name: str, value: float | None) -> str:
         return "–"
     if name.startswith("latency."):
         return f"{value:,.0f} ms"
-    if name == "cost.total_usd":
+    if name in ("cost.total_usd", "cost.projected_usd", "cost.projected_usd_per_question"):
         return f"${value:.6f}"
     if name.startswith("cost.tokens") or name == "cases.errors":
         return f"{value:,.0f}"
@@ -143,6 +150,8 @@ DESCRIPTIONS = {
     "cost.tokens_in": "input tokens",
     "cost.tokens_out": "output tokens",
     "cost.searches_per_question": "searches per question (1 for the pipeline; the agent may search again)",
+    "cost.projected_usd": "the run's tokens priced on the hosted model (KB_PROJECTED_PRICE_MODEL)",
+    "cost.projected_usd_per_question": "projected cost per question, the number a budget is built from",
     "latency.ttft_p50_ms": "time to first token, median",
     "latency.ttft_p95_ms": "time to first token, 95th percentile",
     "latency.total_p95_ms": "total answer time, 95th percentile",

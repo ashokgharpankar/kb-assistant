@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: eval-retrieval eval-index-publish obs-up obs-down obs-reload obs-check metrics ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
+.PHONY: cache-check cache-clear eval-retrieval eval-index-publish obs-up obs-down obs-reload obs-check metrics ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
@@ -74,6 +74,12 @@ eval-judge: ## Same, plus an LLM judge for groundedness (slower)
 
 eval-baseline: ## Run and save the result as eval/baseline.json (commit it)
 	uv run kb eval --update-baseline
+
+cache-check: ## Score eval/cache_pairs.jsonl and recommend a semantic-cache threshold (fails on wrong hits)
+	uv run kb cache-check
+
+cache-clear: ## Empty the answer cache for the current embedding space
+	uv run kb cache-clear
 
 eval-retrieval: ## Retrieval-only evaluation: no model calls, deterministic (what CI runs on every PR)
 	uv run kb eval --retrieval-only

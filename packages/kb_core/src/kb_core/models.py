@@ -107,6 +107,12 @@ class Answer:
     # and the grounding check of the generated text.
     blocked_by: str | None = None
     grounding: Grounding | None = None
+    # Answer cache (Phase 8a): "exact" or "semantic" when served from the cache, how
+    # close the cached question was, and what the model call would have cost.
+    cache: str | None = None
+    cache_similarity: float | None = None
+    cost_saved_usd: Decimal = Decimal(0)
+    tokens_saved: int = 0
 
 
 # --- streaming events ----------------------------------------------------------

@@ -22,6 +22,7 @@ from kb_core.evaluation.metrics import (
 )
 from kb_core.guardrails import screen_question
 from kb_core.models import Answer, RetrievedChunk
+from kb_core.pricing import cost_usd
 
 RetrieveFn = Callable[[str, int], list[RetrievedChunk]]  # (question, depth) -> ranked, no floor
 AnswerFn = Callable[[str], Answer]
@@ -145,9 +146,16 @@ def run_case(
 
 
 def summarise(
-    cases: Sequence[CaseResult], k: int, floor: float
+    cases: Sequence[CaseResult], k: int, floor: float, projected_model: str | None = None
 ) -> tuple[dict[str, float | None], list[dict[str, float]]]:
     ok = [c for c in cases if not c.error]
+    # The same tokens priced on a hosted model: a local run's real cost is $0, which says
+    # nothing about the bill after deploy.
+    projected = (
+        float(sum(cost_usd(projected_model, c.input_tokens, c.output_tokens) for c in ok))
+        if projected_model
+        else None
+    )
     answerable = [c for c in ok if c.kind == "answerable"]
     off_topic = [c for c in ok if c.kind in ("out_of_scope", "injection")]
     injections = [c for c in ok if c.kind == "injection"]
@@ -201,6 +209,12 @@ def summarise(
         "cost.tokens_in": float(sum(c.input_tokens for c in ok)),
         "cost.tokens_out": float(sum(c.output_tokens for c in ok)),
         "cost.searches_per_question": mean([float(c.searches) for c in ok]) if ok else None,
+        # Phase 8: what this run would cost on a hosted model (local runs are $0), and per
+        # question, the number a budget is built from.
+        "cost.projected_usd": projected,
+        "cost.projected_usd_per_question": (
+            projected / len(ok) if ok and projected is not None else None
+        ),
         "latency.ttft_p50_ms": percentile(ttfts, 50),
         "latency.ttft_p95_ms": percentile(ttfts, 95),
         "latency.total_p95_ms": percentile(totals, 95),
@@ -230,6 +244,7 @@ def run_eval(
     depth: int = 10,
     judge: LLMJudge | None = None,
     on_case: Callable[[CaseResult], None] | None = None,
+    projected_model: str | None = None,
 ) -> EvalRun:
     results = []
     for case in cases:
@@ -237,7 +252,7 @@ def run_eval(
         if on_case:
             on_case(result)
         results.append(result)
-    metrics, points = summarise(results, k, floor)
+    metrics, points = summarise(results, k, floor, projected_model)
     if answer_fn is None:
         metrics = {n: (None if n.startswith(_NEEDS_ANSWERS) else v) for n, v in metrics.items()}
     return EvalRun(

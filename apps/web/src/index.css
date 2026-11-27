@@ -274,6 +274,11 @@ button.secondary {
   font-variant-numeric: tabular-nums;
 }
 
+.metrics .cache-badge {
+  color: var(--accent, inherit);
+  font-weight: 600;
+}
+
 .sources h2 {
   font-size: 0.85rem;
   text-transform: uppercase;

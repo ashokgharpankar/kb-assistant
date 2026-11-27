@@ -28,7 +28,7 @@ decision gets a new ADR that supersedes the old one.
 | [0025](0025-evaluation-in-ci.md) | The evaluation as a CI gate, in two tiers | 7c | Accepted |
 | [0016](0016-observability-metrics.md) | Prometheus metrics and Grafana dashboards; traces stay in Langfuse | 7a | Accepted |
 | [0017](0017-guardrails.md) | Guardrails in code around every answer; Bedrock Guardrails when available | 7b | Accepted |
-| 0018 | Caching strategy | 8 | Planned |
+| [0018](0018-answer-cache.md) | An answer cache in Postgres: exact, then semantic behind a measured threshold | 8a | Accepted |
 | 0019 | Model routing by cost and quality | 8 | Planned |
 
 Numbers are identifiers, not phase order: planned numbers are reserved, so a

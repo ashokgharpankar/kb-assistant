@@ -22,6 +22,7 @@ reports. Decisions that follow live in `docs/adr/`.
 | [0013](0013-oidc-provider-already-existed.md) | 2026-11-26 | 6c | `tf-apply` failed: OIDC provider already exists | One provider per URL per account; a per-project stack tried to own it | Fixed (data source); budget drift to verify |
 | [0014](0014-github-oidc-immutable-subject.md) | 2026-11-26 | 6c | First ECR push: `Not authorized to perform sts:AssumeRoleWithWebIdentity` | GitHub's immutable OIDC `sub` (owner@id/repo@id) vs a name-only trust policy | Fixed |
 | [0015](0015-nginx-exits-when-api-name-unresolved.md) | 2026-11-27 | 7a | UI down: nginx `host not found in upstream "api"` | nginx resolves proxy_pass names once at start-up and exits if one is missing | Fixed (resolve per request) |
+| [0016](0016-cancelled-streams-outside-the-outcomes.md) | 2026-11-27 | 7a / 8a | A reader: cancelled streams shouldn't spend the error budget, and must stop the model | Disconnects in a side counter, not an outcome; cancellation tested one link short of the model server | Fixed (`cancelled` outcome, end-to-end test with a fake model server) |
 
 **Adding one:** next number, the same headings (Summary, Impact or Evidence, Root cause,
 Resolution, What we learned, Interview version, Links), a row in this table, and a link from the

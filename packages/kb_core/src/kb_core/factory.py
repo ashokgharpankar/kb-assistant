@@ -81,16 +81,53 @@ def build_agent(
 
 
 def build_answerer(
-    settings: Settings, store: PgVectorStore | None = None, tracer: Tracer | None = None
+    settings: Settings,
+    store: PgVectorStore | None = None,
+    tracer: Tracer | None = None,
+    cache: bool | None = None,
 ) -> Answerer:
-    """The pipeline or the agent (`KB_ANSWER_MODE`), behind the guardrails (`KB_GUARDRAILS`)."""
+    """The pipeline or the agent (`KB_ANSWER_MODE`), with the answer cache (`KB_CACHE`,
+    Phase 8a) and behind the guardrails (`KB_GUARDRAILS`, Phase 7b).
+
+    Order matters: guardrails → cache → model. A blocked question never touches the
+    cache, and a cached answer still gets the grounding check. `cache=False` overrides the
+    setting (the evaluation measures the model, not the cache).
+    """
+    store = store or build_store(settings)
     inner: Answerer = (
         build_agent(settings, store, tracer)
         if settings.answer_mode == "agent"
         else build_pipeline(settings, store, tracer)
     )
+    if settings.cache_enabled if cache is None else cache:
+        inner = build_cache(settings, store, inner)
     if not settings.guardrails:
         return inner
     from kb_core.guarded import GuardedAnswerer  # avoids an import cycle (guarded -> factory types)
 
     return GuardedAnswerer(inner)
+
+
+def build_cache(settings: Settings, store: PgVectorStore, inner: Answerer) -> Answerer:
+    from kb_core.cache import CachedAnswerer, PgAnswerCache
+    from kb_core.rag import PROMPT_VERSION
+
+    cache = PgAnswerCache(
+        store,
+        semantic_threshold=settings.cache_semantic_threshold,
+        ttl_hours=settings.cache_ttl_hours,
+    )
+    cache.ensure_schema()
+    # Everything that changes an answer. The corpus is added per request (it can change
+    # while the API runs); anything here changing starts a fresh namespace.
+    config: dict[str, object] = {
+        "model": chat_model_id(settings),
+        "embeddings": store.space.table_name,
+        "prompt": PROMPT_VERSION,
+        "k": settings.retrieval_k,
+        "floor": settings.min_similarity,
+        "retrieval": settings.retrieval_mode,
+        "reranker": settings.reranker,
+        "answer_mode": settings.answer_mode,
+    }
+    return CachedAnswerer(inner, cache, get_embeddings(settings), config)

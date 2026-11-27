@@ -112,3 +112,38 @@ tests:
             exp_annotations:
               summary: "Only 40% of answer claims are backed by their cited sources"
               runbook: "Look at recent traces (guardrail.grounding span); run make eval and compare answer.grounding_score."
+
+  - name: Cache hit ratio counts exact and semantic hits against all lookups
+    interval: 1m
+    input_series:
+      # Each minute: 2 exact hits, 1 semantic hit, 1 miss -> 75% hit ratio.
+      - series: 'kb_cache_requests_total{result="exact"}'
+        values: "0+2x90"
+      - series: 'kb_cache_requests_total{result="semantic"}'
+        values: "0+1x90"
+      - series: 'kb_cache_requests_total{result="miss"}'
+        values: "0+1x90"
+    promql_expr_test:
+      - expr: kb:cache_hit:ratio_rate1h
+        eval_time: 80m
+        exp_samples:
+          - labels: 'kb:cache_hit:ratio_rate1h'
+            value: 0.75
+
+  - name: Cancelled streams don't spend the error budget
+    interval: 1m
+    input_series:
+      # Each minute: 9 answered, 1 error, and 40 users pressing Stop. Error ratio is
+      # 1/10 = 10%, not 1/50 = 2% (diluted) and not 41/50 (cancellations as errors).
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+9x70"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="error"}'
+        values: "0+1x70"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="cancelled"}'
+        values: "0+40x70"
+    promql_expr_test:
+      - expr: kb:answer_errors:ratio_rate1h
+        eval_time: 65m
+        exp_samples:
+          - labels: 'kb:answer_errors:ratio_rate1h'
+            value: 0.1

@@ -106,6 +106,17 @@ describe('App', () => {
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
 
+  it('labels an answer served from the cache', async () => {
+    const hit = { ...RESULT, cache: 'semantic', cache_similarity: 0.981, cost_usd: '0' }
+    mockApi(() =>
+      sseResponse([sse('sources', []), sse('token', { text: 'Use AZs [1].' }), sse('done', hit)]),
+    )
+    render(<App session={null} />)
+    await askQuestion()
+    expect(await screen.findByText('From cache (similar question, 98%)')).toBeInTheDocument()
+    expect(screen.getByText('$0 (cached)')).toBeInTheDocument()
+  })
+
   it('shows a server error', async () => {
     mockApi(() =>
       sseResponse([

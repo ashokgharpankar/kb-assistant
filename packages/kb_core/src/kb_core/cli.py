@@ -124,10 +124,11 @@ def ask(
     mode: Annotated[
         str | None, typer.Option(help="pipeline or agent (default: KB_ANSWER_MODE)")
     ] = None,
+    cache: Annotated[bool, typer.Option(help="Use the answer cache (KB_CACHE_ENABLED)")] = True,
 ) -> None:
     """Answer a question from the knowledge base, with citations."""
     s = _with_mode(get_settings(), mode)
-    pipeline = build_answerer(s)
+    pipeline = build_answerer(s, cache=None if cache else False)
     answer = None
     printed = False
     typer.echo("")
@@ -153,8 +154,18 @@ def ask(
     typer.echo(
         f"\nmodel={answer.model} tokens={answer.input_tokens} in / {answer.output_tokens} out "
         f"cost=${answer.cost_usd:.6f} retrieved={len(answer.retrieved)} "
-        f"retrieval={answer.retrieval_ms:.0f}ms first_token={ttft} total={answer.total_ms:.0f}ms"
+        + (
+            f"cache_lookup={answer.retrieval_ms:.0f}ms "  # nothing was retrieved on a hit
+            if answer.cache
+            else f"retrieval={answer.retrieval_ms:.0f}ms "
+        )
+        + f"first_token={ttft} total={answer.total_ms:.0f}ms"
     )
+    if answer.cache:
+        typer.echo(
+            f"from cache: {answer.cache} (similarity {answer.cache_similarity:.3f}), "
+            f"saved {answer.tokens_saved} tokens / ${answer.cost_saved_usd:.6f}"
+        )
     if answer.steps:
         typer.echo("\nagent steps:")
         for step in answer.steps:
@@ -257,7 +268,11 @@ def evaluate(
 
     store = build_store(s)
     # Evaluation runs are not user traffic: keep them out of the traces.
-    answerer = None if retrieval_only else build_answerer(s, store=store, tracer=NoopTracer())
+    # cache=False: the evaluation measures the model, not answers remembered from a
+    # previous run (Phase 8a).
+    answerer = (
+        None if retrieval_only else build_answerer(s, store=store, tracer=NoopTracer(), cache=False)
+    )
     # Scored with the same strategy the pipeline uses (hybrid, reranker), but deeper
     # and without the floor, so near misses show up.
     retriever = build_retriever(s, store, get_embeddings(s))
@@ -318,6 +333,7 @@ def evaluate(
         depth,
         llm_judge,
         on_case=progress,
+        projected_model=s.projected_price_model,
     )
     store.close()
 
@@ -356,6 +372,63 @@ def evaluate(
     if gate_failures or regressions:
         if regressions:
             typer.echo(f"Regressed against the baseline: {', '.join(regressions)}")
+        raise typer.Exit(code=1)
+
+
+@app.command("cache-clear")
+def cache_clear() -> None:
+    """Delete every cached answer for the current embedding space."""
+    from kb_core.cache import PgAnswerCache
+
+    s = get_settings()
+    store = build_store(s)
+    cache = PgAnswerCache(store, s.cache_semantic_threshold, s.cache_ttl_hours)
+    cache.ensure_schema()
+    typer.echo(f"removed {cache.clear()} cached answers from {cache.table}")
+    store.close()
+
+
+@app.command("cache-check")
+def cache_check(
+    pairs_file: Annotated[Path, typer.Option("--pairs")] = Path("eval/cache_pairs.jsonl"),
+    threshold: Annotated[
+        float | None, typer.Option(help="Threshold to test (default: KB_CACHE_SEMANTIC_THRESHOLD)")
+    ] = None,
+) -> None:
+    """Score labelled question pairs and recommend a semantic-cache threshold."""
+    from kb_core.evaluation.cache_check import analyse, load_pairs, score_pairs, wrong_hits
+
+    s = get_settings()
+    chosen = threshold if threshold is not None else s.cache_semantic_threshold
+    scored = score_pairs(load_pairs(pairs_file), get_embeddings(s).embed_documents)
+    typer.echo(f"embeddings: {embedding_space(s)}\n")
+    for sp in sorted(scored, key=lambda x: -x.similarity):
+        label = "same" if sp.pair.same else "DIFF"
+        typer.echo(f"  {sp.similarity:.3f}  {label}  {sp.pair.a!r} ~ {sp.pair.b!r}")
+    analysis = analyse(scored)
+    typer.echo(
+        f"\nlowest same-meaning {analysis.lowest_answerable:.3f}, "
+        f"highest different-meaning {analysis.highest_off_topic:.3f}, "
+        f"gap {analysis.gap:+.3f}"
+    )
+    typer.echo(
+        f"recommended threshold: {analysis.recommended}"
+        if analysis.recommended is not None
+        else "no clean separation: keep the exact cache only, or raise the threshold above "
+        "the highest different-meaning pair"
+    )
+    if chosen is None:
+        typer.echo("semantic cache is off (KB_CACHE_SEMANTIC_THRESHOLD unset)")
+        return
+    same = [sp for sp in scored if sp.pair.same]
+    hits = sum(sp.similarity >= chosen for sp in same)
+    bad = wrong_hits(scored, chosen)
+    typer.echo(
+        f"\nat {chosen:.2f}: {hits}/{len(same)} same-meaning pairs hit, {len(bad)} wrong hits"
+    )
+    for sp in bad:
+        typer.echo(f"  WRONG {sp.similarity:.3f} {sp.pair.a!r} ~ {sp.pair.b!r}")
+    if bad:
         raise typer.Exit(code=1)
 
 

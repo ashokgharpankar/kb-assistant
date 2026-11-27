@@ -91,7 +91,7 @@ class FakePipeline:
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "build_store", lambda s: FakeStore())
-    monkeypatch.setattr(cli, "build_answerer", lambda s: FakePipeline())
+    monkeypatch.setattr(cli, "build_answerer", lambda s, **_: FakePipeline())
     monkeypatch.setattr(cli, "get_embeddings", lambda s: WordHashEmbeddings())
 
 
@@ -179,7 +179,7 @@ def test_ask_mode_agent_selects_the_agent_and_prints_its_steps(
                     ]
                 yield event
 
-    def build(s: Any) -> StepsPipeline:
+    def build(s: Any, **_: Any) -> StepsPipeline:
         modes.append(s.answer_mode)
         return StepsPipeline()
 
@@ -190,3 +190,21 @@ def test_ask_mode_agent_selects_the_agent_and_prints_its_steps(
     assert "agent steps:" in result.output
     assert "generate from 1 chunks: answered" in result.output
     assert runner.invoke(cli.app, ["ask", "q", "--mode", "crew"]).exit_code == 2
+
+
+def test_cache_check_reports_wrong_hits_and_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from .conftest import WordHashEmbeddings
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        '{"a": "What is a game day?", "b": "what is a game day", "same": true}\n'
+        '{"a": "What does RTO mean?", "b": "What does RPO mean?", "same": false}\n'
+    )
+    monkeypatch.setattr(cli, "get_embeddings", lambda s: WordHashEmbeddings())
+    ok = runner.invoke(cli.app, ["cache-check", "--pairs", str(pairs), "--threshold", "0.99"])
+    assert ok.exit_code == 0, ok.output
+    assert "1/1 same-meaning pairs hit, 0 wrong hits" in ok.output
+    bad = runner.invoke(cli.app, ["cache-check", "--pairs", str(pairs), "--threshold", "0.0"])
+    assert bad.exit_code == 1 and "WRONG" in bad.output

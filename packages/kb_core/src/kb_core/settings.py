@@ -51,6 +51,12 @@ class Settings(BaseSettings):
         )
         return self
 
+    @field_validator("cache_semantic_threshold", mode="before")
+    @classmethod
+    def _empty_means_off(cls, value: object) -> object:
+        # `KB_CACHE_SEMANTIC_THRESHOLD=` in .env must mean "off", not a parse error.
+        return None if isinstance(value, str) and not value.strip() else value
+
     @field_validator("embed_dimensions")
     @classmethod
     def _valid_embed_dimensions(cls, value: int) -> int:
@@ -89,6 +95,16 @@ class Settings(BaseSettings):
     # Phase 7b: input screen, refusal detection and grounding check around every answer.
     # Off only to measure the model without them (`KB_GUARDRAILS=false kb eval`).
     guardrails: bool = True
+    # Phase 8a: answer cache. Exact hits are always safe; semantic hits reuse the answer
+    # to a near-identical earlier question (cosine >= threshold). Off by default: with
+    # nomic-embed-text, "Is it safe…" vs "Is it unsafe…" scored 0.986, above almost every
+    # true rewording, so no threshold is safe (`kb cache-check`, ADR 0018). Unset or
+    # empty = exact only.
+    cache_enabled: bool = True
+    cache_semantic_threshold: float | None = Field(default=None, ge=0.8, le=1.0)
+    cache_ttl_hours: int = Field(default=168, ge=1)
+    # What the eval reports as "projected cost": local token counts priced as this model.
+    projected_price_model: str = "amazon.nova-micro-v1:0"
     # The agent's hard limit on searches per question; bounds cost and latency.
     agent_max_searches: int = Field(default=3, ge=1, le=5)
 
