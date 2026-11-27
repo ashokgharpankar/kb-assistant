@@ -222,6 +222,13 @@ def evaluate(
     mode: Annotated[
         str | None, typer.Option(help="pipeline or agent (default: KB_ANSWER_MODE)")
     ] = None,
+    retrieval_only: Annotated[
+        bool,
+        typer.Option(
+            help="Score retrieval, the floor and the input screen only: no model calls, "
+            "deterministic (CI on every pull request)"
+        ),
+    ] = False,
 ) -> None:
     """Score retrieval, answers, refusals and the similarity floor on a fixed question set.
 
@@ -232,6 +239,8 @@ def evaluate(
     from kb_core.evaluation.report import check_gate, compare, load_gate, to_markdown
     from kb_core.evaluation.runner import CaseResult, run_eval
 
+    if retrieval_only and (update_baseline or judge):
+        raise typer.BadParameter("--retrieval-only can't update the baseline or use --judge")
     s = get_settings()
     updates: dict[str, object] = {}
     if k is not None:
@@ -248,7 +257,7 @@ def evaluate(
 
     store = build_store(s)
     # Evaluation runs are not user traffic: keep them out of the traces.
-    answerer = build_answerer(s, store=store, tracer=NoopTracer())
+    answerer = None if retrieval_only else build_answerer(s, store=store, tracer=NoopTracer())
     # Scored with the same strategy the pipeline uses (hybrid, reranker), but deeper
     # and without the floor, so near misses show up.
     retriever = build_retriever(s, store, get_embeddings(s))
@@ -265,7 +274,13 @@ def evaluate(
         llm_judge = LLMJudge(get_chat_model(judge_settings), chat_model_id(judge_settings))
 
     def progress(result: CaseResult) -> None:
-        mark = "ok  " if result.passed(s.retrieval_k) else "FAIL"
+        if retrieval_only and result.kind != "answerable":
+            mark = "-   "  # nothing to judge without an answer
+        elif retrieval_only:
+            found = result.relevant_rank is not None and result.relevant_rank <= s.retrieval_k
+            mark = "ok  " if found and not result.error else "FAIL"
+        else:
+            mark = "ok  " if result.passed(s.retrieval_k) else "FAIL"
         top = f"{result.top_similarity:.3f}" if result.top_similarity is not None else "  -  "
         again = f"  ({result.searches} searches)" if result.searches > 1 else ""
         typer.echo(f"  {mark} {top}  {result.id}{again}")
@@ -285,16 +300,18 @@ def evaluate(
         "dataset": str(dataset),
         "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest()[:12],
         "judge": llm_judge.model_id if llm_judge else None,
+        "retrieval_only": retrieval_only,
     }
     typer.echo(
         f"Evaluating {len(cases)} cases with {config['model']} (k={s.retrieval_k}, "
         f"floor={s.min_similarity}, retrieval={retriever.description}, answer={s.answer_mode}, "
-        f"guardrails={'on' if s.guardrails else 'off'})\n"
+        f"guardrails={'on' if s.guardrails else 'off'}"
+        f"{', retrieval only: no model calls' if retrieval_only else ''})\n"
     )
     run = run_eval(
         cases,
         retrieve,
-        answerer.answer,
+        answerer.answer if answerer else None,
         config,
         s.retrieval_k,
         s.min_similarity,
@@ -310,7 +327,11 @@ def evaluate(
         if previous.get("config", {}).get("dataset_sha256") != config["dataset_sha256"]:
             typer.echo("\nNote: the baseline used a different version of the dataset.")
         deltas = compare(run.metrics, previous["metrics"], gate_latency=gate_latency)
-    gate_failures = check_gate(run.metrics, load_gate(gate)) if gate.exists() else None
+    gate_failures = (
+        check_gate(run.metrics, load_gate(gate), skip_unmeasured=retrieval_only)
+        if gate.exists()
+        else None
+    )
 
     report = to_markdown(run, deltas, gate_failures)
     typer.echo("\n" + report)
@@ -319,6 +340,8 @@ def evaluate(
         out = Path("eval/results")
         out.mkdir(parents=True, exist_ok=True)
         stem = f"{created.replace(':', '').replace('-', '')}-{config['model']}".replace("/", "_")
+        if retrieval_only:
+            stem += "-retrieval"
         (out / f"{stem}.json").write_text(json.dumps(run.to_dict(), indent=2), encoding="utf-8")
         (out / f"{stem}.md").write_text(report, encoding="utf-8")
         typer.echo(f"Saved eval/results/{stem}.json and .md")

@@ -1,0 +1,130 @@
+name: eval
+
+# The evaluation as a CI gate (Phase 7c). Two tiers:
+#
+#   retrieval  every pull request that touches retrieval, prompts or the dataset: hit rate,
+#              MRR, the similarity floor and the input screen, against a real index with the
+#              real embedding model. No model calls, deterministic, ~3 minutes.
+#   full       nightly, on demand, or when a pull request has the label "eval:full": the whole
+#              evaluation with the local model on CPU (slow, ~20 minutes, $0). With Bedrock it
+#              becomes a few cents per run (6c-3).
+#
+# The index (chunks + embeddings) is a GitHub release asset checked against eval/index.sha256,
+# so a new index is a reviewed change. See docs/phase-7c-eval-in-ci.md and ADR 0025.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+    paths:
+      - "packages/kb_core/**"
+      - "eval/**"
+      - "uv.lock"
+      - "scripts/eval-index.sh"
+      - ".github/workflows/eval.yml"
+  schedule:
+    - cron: "17 20 * * *" # 01:47 in India; off the top of the hour
+  workflow_dispatch: # "Run workflow" button: the full evaluation. No inputs, on purpose
+                     # (a free-form input can change what the run does: checkov CKV_GHA_7).
+
+permissions:
+  contents: read # checkout and download the index release asset; nothing else
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  KB_DATABASE_URL: postgresql+psycopg://kb:kb_ci_only@localhost:5432/kb
+  DATABASE_URL: postgresql://kb:kb_ci_only@localhost:5432/kb
+  KB_OLLAMA_BASE_URL: http://localhost:11434
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  retrieval:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: kb
+          POSTGRES_PASSWORD: kb_ci_only
+          POSTGRES_DB: kb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kb -d kb"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      ollama:
+        image: ollama/ollama:0.40.18 # pinned; same version in both jobs
+        ports: ["11434:11434"]
+        options: >-
+          --health-cmd "ollama list"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Load the evaluation index (checksum-verified)
+        run: scripts/eval-index.sh restore
+      - name: Pull the embedding model
+        run: scripts/ollama-pull.sh nomic-embed-text
+      - name: Retrieval evaluation (no model calls)
+        run: uv run kb eval --retrieval-only
+      - name: Report
+        if: always()
+        run: scripts/eval-summary.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-retrieval
+          path: eval/results/
+          retention-days: 30
+
+  full:
+    if: >-
+      github.event_name == 'schedule'
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'eval:full'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: kb
+          POSTGRES_PASSWORD: kb_ci_only
+          POSTGRES_DB: kb
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U kb -d kb"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      ollama:
+        image: ollama/ollama:0.40.18 # pinned; same version in both jobs
+        ports: ["11434:11434"]
+        options: >-
+          --health-cmd "ollama list"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Load the evaluation index (checksum-verified)
+        run: scripts/eval-index.sh restore
+      - name: Pull the models
+        run: scripts/ollama-pull.sh nomic-embed-text llama3.2
+      - name: Full evaluation (local model on CPU; latency isn't gated here)
+        run: uv run kb eval
+      - name: Report
+        if: always()
+        run: scripts/eval-summary.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-full
+          path: eval/results/
+          retention-days: 30
