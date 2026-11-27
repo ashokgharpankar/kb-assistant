@@ -9,8 +9,9 @@ name: eval
 #              evaluation with the local model on CPU (slow, ~20 minutes, $0). With Bedrock it
 #              becomes a few cents per run (6c-3).
 #
-# The index (chunks + embeddings) is a GitHub release asset checked against eval/index.sha256,
-# so a new index is a reviewed change. See docs/phase-7c-eval-in-ci.md and ADR 0025.
+# The index (chunks + embeddings) sits in a private S3 bucket (the repo is public; the index
+# holds the documents' text), read through GitHub OIDC with a role that can read one object,
+# and is checked against eval/index.sha256. See docs/phase-7c-eval-in-ci.md and ADR 0025.
 
 on:
   pull_request:
@@ -27,7 +28,8 @@ on:
                      # (a free-form input can change what the run does: checkov CKV_GHA_7).
 
 permissions:
-  contents: read # checkout and download the index release asset; nothing else
+  contents: read # checkout
+  id-token: write # OIDC token for the read-only index role; no AWS keys in GitHub
 
 concurrency:
   group: eval-${{ github.ref }}
@@ -37,11 +39,14 @@ env:
   KB_DATABASE_URL: postgresql+psycopg://kb:kb_ci_only@localhost:5432/kb
   DATABASE_URL: postgresql://kb:kb_ci_only@localhost:5432/kb
   KB_OLLAMA_BASE_URL: http://localhost:11434
-  GH_TOKEN: ${{ github.token }}
+  EVAL_INDEX_BUCKET: ${{ vars.AWS_EVAL_INDEX_BUCKET }}
 
 jobs:
   retrieval:
-    if: github.event_name == 'pull_request'
+    # Fork PRs get no OIDC token, so they can't read the private index: skip them.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -67,6 +72,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - name: AWS credentials (OIDC, read-only index role)
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_EVAL_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: Load the evaluation index (checksum-verified)
         run: scripts/eval-index.sh restore
       - name: Pull the embedding model
@@ -87,7 +97,9 @@ jobs:
     if: >-
       github.event_name == 'schedule'
       || github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'eval:full'))
+      || (github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && contains(github.event.pull_request.labels.*.name, 'eval:full'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -113,6 +125,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --frozen
+      - name: AWS credentials (OIDC, read-only index role)
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_EVAL_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
       - name: Load the evaluation index (checksum-verified)
         run: scripts/eval-index.sh restore
       - name: Pull the models

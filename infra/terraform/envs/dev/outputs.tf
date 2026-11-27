@@ -80,3 +80,13 @@ output "app" {
     log_groups        = module.app[0].log_groups
   } : null
 }
+
+output "eval_index_bucket" {
+  description = "Private bucket holding the evaluation index for CI (Phase 7c)."
+  value       = aws_s3_bucket.eval_index.bucket
+}
+
+output "github_eval_role_arn" {
+  description = "Role the eval workflow assumes to read the index. Set as repo variable AWS_EVAL_ROLE_ARN."
+  value       = aws_iam_role.github_eval_read.arn
+}

@@ -1,6 +1,6 @@
 # Phase 7c: The evaluation as a CI gate
 
-**Time:** 1–1.5 hours. **Cost:** $0 (GitHub-hosted runners, local models).
+**Time:** 1–1.5 hours. **Cost:** ~$0 (GitHub-hosted runners, local models; a few cents a month of S3).
 
 **Goal:** a change that makes retrieval worse can't merge, and a change that makes answers
 worse is caught within a day. The same evaluation and gate you run locally, in CI.
@@ -11,8 +11,9 @@ worse is caught within a day. The same evaluation and gate you run locally, in C
   model calls. Deterministic.
 - `.github/workflows/eval.yml` with two tiers: retrieval on every relevant pull request; the
   full evaluation nightly, on demand, or with the label `eval:full`.
-- The index (chunks and embeddings) as a checksum-verified fixture: a GitHub release asset
-  plus `eval/index.sha256` in the repo.
+- The index (chunks and embeddings) as a checksum-verified fixture in a **private S3 bucket**,
+  read by CI through GitHub OIDC with a role that can read one object; `eval/index.sha256` in
+  the repo.
 - ADR 0025.
 
 ---
@@ -46,11 +47,18 @@ CI must evaluate the same chunks and embeddings as the baseline, or a "regressio
 be a different index. Re-ingesting the PDFs in CI would take minutes and could differ. Instead:
 
 1. `make eval-index-publish` dumps the three tables (plain SQL, gzip), uploads the file to a
-   GitHub release named `eval-index`, and writes its sha256 to `eval/index.sha256`.
+   private S3 bucket, and writes its sha256 to `eval/index.sha256`.
 2. You commit `eval/index.sha256`.
-3. CI downloads the dump and refuses it unless the checksum matches the committed one.
+3. CI assumes a read-only role through GitHub OIDC, downloads the dump, and refuses it unless
+   the checksum matches the committed one.
 
 That's the same idea as pinning an image by digest: the bytes the test uses are reviewed.
+
+**Why private S3 and not a GitHub release:** the repository is public (recruiters can read
+it), and the dump contains the text of the AWS documents. Indexing public documents for
+yourself is fine; republishing their text for anyone to download is redistribution. The role
+can read exactly one object, pull requests from forks get no OIDC token at all, and there are
+no keys in GitHub.
 
 ### 4. Gates, baselines and noise
 
@@ -78,7 +86,8 @@ approved models.
 | `packages/kb_core/src/kb_core/evaluation/runner.py` | `answer_fn=None` → retrieval-only: screen checked, answer metrics `None` |
 | `packages/kb_core/src/kb_core/evaluation/report.py` | `check_gate(..., skip_unmeasured=True)`; a "Retrieval misses" report |
 | `packages/kb_core/src/kb_core/cli.py` | `kb eval --retrieval-only` (refuses `--update-baseline` and `--judge`) |
-| `scripts/eval-index.sh` | `publish` (dump → release asset + checksum) and `restore` (download → verify → load) |
+| `infra/terraform/envs/dev/eval_index.tf` | Private bucket (versioned, encrypted, TLS-only, public access blocked) and the read-only OIDC role |
+| `scripts/eval-index.sh` | `publish` (dump → S3 + checksum) and `restore` (download → verify → load) |
 | `scripts/ollama-pull.sh`, `scripts/eval-summary.sh` | Pull models over Ollama's API; put the report on the run page |
 | `.github/workflows/eval.yml` | Tier 1 and tier 2 jobs |
 | `Makefile` | `eval-retrieval`, `eval-index-publish` |
@@ -86,7 +95,7 @@ approved models.
 Verified before delivery: unit tests for retrieval-only metrics and the gate's skip mode; the
 restore script against a real Postgres with pgvector (checksum mismatch refused; tables,
 vectors, generated tsvector column and HNSW index loaded; safe to run twice); checkov on the
-workflows (0 failed); mypy as the pre-commit hook runs it.
+workflows and Terraform (0 failed); mypy as the pre-commit hook runs it.
 
 ---
 
@@ -109,18 +118,22 @@ Answerable cases show `ok` or `FAIL` (evidence in the top k or not); the others 
 because there's nothing to judge without an answer. The report has no answer metrics, and the
 gate passes on what was measured. It finishes in seconds.
 
-### Step 2: publish the index CI will use
+### Step 2: create the bucket and the role, then publish the index
 
 ```bash
-gh auth status                 # needs to be able to create releases in the repo
+aws login                       # if the session expired
+make tf-init                    # nothing new to install, but harmless
+make tf-plan                    # expect: 9 to add, 0 to change, 0 to destroy
+make tf-apply
+gh variable set AWS_EVAL_ROLE_ARN --body "$(terraform -chdir=infra/terraform/envs/dev output -raw github_eval_role_arn)"
+gh variable set AWS_EVAL_INDEX_BUCKET --body "$(terraform -chdir=infra/terraform/envs/dev output -raw eval_index_bucket)"
 make eval-index-publish
 cat eval/index.sha256
-gh release view eval-index     # a pre-release with kb-index.sql.gz
 ```
 
-The release is marked "pre-release" and titled "Evaluation index (not a release)". If the
-repository is public, so is this file: it holds chunks of the public AWS documents and their
-embeddings, nothing private.
+The nine resources: the bucket, its ownership controls, public access block, versioning,
+encryption, lifecycle and TLS-only policy, the role and its policy. Cost: a few cents a month
+for one ~20 MB file.
 
 ### Step 3: open the PR and watch tier 1
 
@@ -165,8 +178,9 @@ Generation is checked daily or on request; after the Bedrock switch it gets fast
 enough to run more often.
 
 **"How do you make evaluation reproducible in CI?"**
-Treat the index as a fixture: a dump published as a release asset, its checksum committed, and
-CI refuses anything that doesn't match. Pin the database and model server images. Don't gate
+Treat the index as a fixture: a dump in a private bucket, its checksum committed, and CI
+refuses anything that doesn't match. The repo is public but the index isn't: it contains the
+source documents' text, so CI reads it through an OIDC role that can read one object. Pin the database and model server images. Don't gate
 latency on shared runners.
 
 **"What does it cost?"**
@@ -179,8 +193,10 @@ bigger cost is runner minutes, which is why the slow tier doesn't run on every p
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `release not found` in "Load the evaluation index" | Index never published | `make eval-index-publish`, commit `eval/index.sha256` |
-| `doesn't match eval/index.sha256: refusing to use it` | The release asset was replaced, or the checksum wasn't committed | Re-run `make eval-index-publish` and commit the new checksum |
+| `Could not assume role with OIDC` | `AWS_EVAL_ROLE_ARN` not set, or the trust policy's `sub` doesn't match | `gh variable list`; the sub must use the immutable form (incident 0014) |
+| `NoSuchKey` / `403` in "Load the evaluation index" | Index never published, or wrong bucket variable | `make eval-index-publish`; check `AWS_EVAL_INDEX_BUCKET` |
+| `doesn't match eval/index.sha256: refusing to use it` | The index was re-published, but the checksum wasn't committed | Commit the new `eval/index.sha256` |
+| The eval job is skipped on a PR | The PR comes from a fork (no OIDC token) | Expected |
 | Retrieval metrics far below the laptop | CI loaded a different index than the baseline used | Publish the index from the same database the baseline ran on |
 | `Pull of nomic-embed-text failed` | Registry hiccup | Re-run the job |
 | Full job times out | CPU generation is slow | Keep it nightly; raise `timeout-minutes`, or wait for Bedrock |

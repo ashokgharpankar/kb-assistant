@@ -78,7 +78,7 @@ eval-baseline: ## Run and save the result as eval/baseline.json (commit it)
 eval-retrieval: ## Retrieval-only evaluation: no model calls, deterministic (what CI runs on every PR)
 	uv run kb eval --retrieval-only
 
-eval-index-publish: ## Upload the local index (chunks + embeddings) for CI; then commit eval/index.sha256
+eval-index-publish: ## Upload the local index (chunks + embeddings) to the private S3 bucket for CI; then commit eval/index.sha256
 	scripts/eval-index.sh publish
 
 mcp: ## Run the MCP server over stdio (normally a client launches it, not you)
