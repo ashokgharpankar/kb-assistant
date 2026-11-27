@@ -21,9 +21,11 @@ question; Bedrock, which would make full runs fast and cheap, is still blocked (
 - **Tier 2, nightly, on demand, or with the label `eval:full`:** the full evaluation with the
   local model on CPU. Slow, $0. After the Bedrock switch it runs against Bedrock through the
   GitHub OIDC role: a few cents per run, minutes instead of tens of minutes.
-- **The index is a versioned fixture:** a plain-SQL dump of the chunks and embeddings,
-  published as a GitHub release asset; its sha256 is committed in `eval/index.sha256`, and CI
-  refuses a dump that doesn't match. A new index is a reviewed one-line change.
+- **The index is a versioned fixture:** a plain-SQL dump of the chunks and embeddings in a
+  **private S3 bucket**, read by CI through GitHub OIDC with a role that can read that one
+  object. Its sha256 is committed in `eval/index.sha256`, and CI refuses a dump that doesn't
+  match. A new index is a reviewed one-line change. Not a GitHub release asset: the repository
+  is public, and the dump contains the documents' text, which isn't ours to redistribute.
 - Pinned versions: `pgvector/pgvector:pg17`, `ollama/ollama:0.40.18`. Latency is reported,
   not gated, on CPU runners.
 
@@ -35,7 +37,9 @@ question; Bedrock, which would make full runs fast and cheap, is still blocked (
 | Only unit tests in CI | Rejected: retrieval regressions (Phase 4: 79% → 96% hit rate came from config) pass unit tests |
 | **Two tiers: deterministic retrieval on PRs, full nightly / on label** | **Chosen**: the most common regressions blocked cheaply, generation checked daily |
 | Re-ingest the PDFs in CI | Rejected: minutes of embedding per run, and a different index than the baseline |
-| Commit the dump to git | Rejected: large binary in history; a release asset plus a committed checksum gives the same integrity |
+| Commit the dump to git | Rejected: large binary in history, and public (the repo is public) |
+| Public GitHub release asset | Rejected: redistributes the AWS documents' text from a public repository |
+| **Private S3 + OIDC read-only role + committed checksum** | **Chosen**: private, integrity-checked, no stored keys, ~$0 |
 | Self-hosted runner with a GPU | Later, if ever: cost and maintenance for one person |
 
 ## Consequences
@@ -45,5 +49,7 @@ question; Bedrock, which would make full runs fast and cheap, is still blocked (
   `eval:full`.
 - When the corpus or chunking changes, the index must be re-published and the checksum
   committed in the same PR (`make eval-index-publish`), otherwise CI tests the old index.
+- Pull requests from forks get no OIDC token and skip the evaluation. Pull requests inside the
+  repository can assume the read role; it can read only the index, which CI uses anyway.
 - CPU generation differs slightly from the laptop's GPU; the nightly full run compares against
   a baseline made locally, so small answer-metric drifts are expected until runs move to Bedrock.
