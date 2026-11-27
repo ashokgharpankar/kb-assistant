@@ -33,8 +33,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --package kb-api
 
 FROM python:3.12-slim-bookworm AS runtime
+# Debian ships security fixes faster than the python base image is rebuilt (incident 0012,
+# here libpam CVE-2025-6020): take them at build time, then drop the package lists.
 # A fixed, unprivileged user. Files stay owned by root, so the app can't modify its own code.
-RUN groupadd --system --gid 10001 app \
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --home-dir /tmp --no-create-home app
 COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:${PATH}" \
