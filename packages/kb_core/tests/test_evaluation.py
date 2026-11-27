@@ -488,3 +488,14 @@ def test_retrieval_only_gate_skips_answer_metrics_but_keeps_the_rest() -> None:
     assert check_gate({"retrieval.hit_rate_at_k": 0.8}, gate, skip_unmeasured=True) == [
         "retrieval.hit_rate_at_k = 0.800, below the minimum 0.9"
     ]
+
+
+def test_grounding_score_has_its_own_tolerance() -> None:
+    base = {"answer.grounding_score": 0.57, "answer.fact_recall": 0.72}
+    noisy = {"answer.grounding_score": 0.49, "answer.fact_recall": 0.72}  # measured run-to-run
+    assert not any(d.regressed for d in compare(noisy, base))
+    real = {"answer.grounding_score": 0.45, "answer.fact_recall": 0.64}
+    assert {d.name for d in compare(real, base) if d.regressed} == {
+        "answer.grounding_score",
+        "answer.fact_recall",
+    }

@@ -28,8 +28,18 @@ export function Metrics({ result }: { result: AskResult }) {
       </div>
       <div>
         <dt>Cost</dt>
-        <dd>{cost === 0 ? '$0 (local)' : `$${cost.toFixed(6)}`}</dd>
+        <dd>{result.cache ? '$0 (cached)' : cost === 0 ? '$0 (local)' : `$${cost.toFixed(6)}`}</dd>
       </div>
+      {result.cache && (
+        <div>
+          <dt>Source</dt>
+          <dd className="cache-badge">
+            {result.cache === 'exact'
+              ? 'From cache (same question)'
+              : `From cache (similar question, ${Math.round((result.cache_similarity ?? 0) * 100)}%)`}
+          </dd>
+        </div>
+      )}
     </dl>
   )
 }

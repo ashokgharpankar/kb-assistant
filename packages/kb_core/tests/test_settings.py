@@ -50,3 +50,14 @@ def test_database_url_unchanged_without_db_host() -> None:
     assert Settings(_env_file=None).database_url.startswith(
         "postgresql+psycopg://kb:kb_local_only@localhost"
     )
+
+
+def test_semantic_cache_is_off_by_default_and_empty_means_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("KB_CACHE_SEMANTIC_THRESHOLD", raising=False)
+    assert Settings(_env_file=None).cache_semantic_threshold is None
+    monkeypatch.setenv("KB_CACHE_SEMANTIC_THRESHOLD", "")
+    assert Settings(_env_file=None).cache_semantic_threshold is None
+    monkeypatch.setenv("KB_CACHE_SEMANTIC_THRESHOLD", "0.99")
+    assert Settings(_env_file=None).cache_semantic_threshold == 0.99

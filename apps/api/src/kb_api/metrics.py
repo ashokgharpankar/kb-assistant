@@ -96,15 +96,26 @@ TOKENS = Counter(
     ["model", "direction"],
     registry=REGISTRY,
 )
+CACHE = Counter(
+    "kb_cache_requests",
+    "Answer-cache lookups by result: exact, semantic or miss (blocked questions never reach it).",
+    ["result"],
+    registry=REGISTRY,
+)
+CACHE_SAVED = Counter(
+    "kb_cache_saved_usd",
+    "Model cost the cache avoided, in US dollars (what the cached answer cost to generate).",
+    registry=REGISTRY,
+)
+CACHE_TOKENS_SAVED = Counter(
+    "kb_cache_tokens_saved",
+    "Model tokens the cache avoided.",
+    registry=REGISTRY,
+)
 COST = Counter(
     "kb_llm_cost_usd",
     "Model cost in US dollars, by model (0 for local models).",
     ["model"],
-    registry=REGISTRY,
-)
-DISCONNECTS = Counter(
-    "kb_stream_disconnects",
-    "Streams stopped because the browser went away (Stop button, closed tab).",
     registry=REGISTRY,
 )
 GROUNDING = Histogram(
@@ -136,7 +147,8 @@ OUTCOMES = ("answered", "refused", "below_floor", "blocked", "error")
 
 def outcome_of(answer: Answer) -> str:
     """answered, refused (the model said "not found"), below_floor (no model call), or
-    blocked (the input screen stopped it before retrieval)."""
+    blocked (the input screen stopped it before retrieval). The other two outcomes,
+    error and cancelled, have no answer: see record_error and record_cancelled."""
     if answer.blocked_by:
         return "blocked"
     if answer.answered_from_context:
@@ -147,7 +159,7 @@ def outcome_of(answer: Answer) -> str:
     return "refused"
 
 
-def record_answer(answer: Answer, endpoint: str, mode: str) -> None:
+def record_answer(answer: Answer, endpoint: str, mode: str, cache_on: bool = True) -> None:
     ANSWERS.labels(endpoint=endpoint, mode=mode, outcome=outcome_of(answer)).inc()
     if answer.blocked_by:
         BLOCKED.labels(reason=answer.blocked_by).inc()
@@ -164,10 +176,24 @@ def record_answer(answer: Answer, endpoint: str, mode: str) -> None:
     if answer.retrieved:
         TOP_SIMILARITY.observe(max(r.similarity for r in answer.retrieved))
     SEARCHES.observe(answer.searches)
+    if cache_on:  # with the cache off there was no lookup, so no miss to count
+        CACHE.labels(result=answer.cache or "miss").inc()
+    if answer.cache:
+        # Latency above includes hits (users feel them); tokens and cost don't, because
+        # they were counted when the answer was first generated.
+        CACHE_SAVED.inc(float(answer.cost_saved_usd))
+        CACHE_TOKENS_SAVED.inc(answer.tokens_saved)
+        return
     if answer.model:
         TOKENS.labels(model=answer.model, direction="input").inc(answer.input_tokens)
         TOKENS.labels(model=answer.model, direction="output").inc(answer.output_tokens)
         COST.labels(model=answer.model).inc(float(answer.cost_usd))
+
+
+def record_cancelled(endpoint: str, mode: str) -> None:
+    """The browser left mid-stream (Stop button, closed tab). Not a fault: the SLO
+    excludes it, so a user changing their mind doesn't spend the error budget."""
+    ANSWERS.labels(endpoint=endpoint, mode=mode, outcome="cancelled").inc()
 
 
 def record_error(endpoint: str, mode: str) -> None:

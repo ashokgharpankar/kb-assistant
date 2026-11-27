@@ -154,3 +154,43 @@ def test_grounding_is_observed_and_returned() -> None:
     body = use(Pipeline(answer)).post("/ask", json={"question": "How do I replicate data?"}).json()
     assert body["grounding_score"] == 0.5 and body["unknown_terms"] == ["LRS"]
     assert value("kb_answer_unknown_terms_total") == before + 1
+
+
+def test_cache_hit_counts_savings_not_spend() -> None:
+    from dataclasses import replace
+
+    model = "amazon.nova-micro-v1:0"
+    hit = replace(
+        answered(),
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=Decimal(0),
+        cost_saved_usd=Decimal("0.0000371"),
+        tokens_saved=940,
+        cache="semantic",
+        cache_similarity=0.98123,
+        searches=0,
+    )
+    before = {
+        "hits": value("kb_cache_requests_total", result="semantic"),
+        "saved": value("kb_cache_saved_usd_total"),
+        "tokens_saved": value("kb_cache_tokens_saved_total"),
+        "out": value("kb_llm_tokens_total", model=model, direction="output"),
+    }
+    response = use(Pipeline(hit)).post("/ask", json={"question": "How do I stay up?"})
+    body = response.json()
+    assert (body["cache"], body["cache_similarity"], body["cost_saved_usd"]) == (
+        "semantic",
+        0.9812,
+        "0.0000371",
+    )
+    assert value("kb_cache_requests_total", result="semantic") == before["hits"] + 1
+    assert value("kb_cache_saved_usd_total") == pytest.approx(before["saved"] + 0.0000371)
+    assert value("kb_cache_tokens_saved_total") == before["tokens_saved"] + 940
+    assert value("kb_llm_tokens_total", model=model, direction="output") == before["out"]
+
+
+def test_a_generated_answer_is_a_cache_miss() -> None:
+    before = value("kb_cache_requests_total", result="miss")
+    use(Pipeline(answered())).post("/ask", json={"question": "How do I stay up?"})
+    assert value("kb_cache_requests_total", result="miss") == before + 1

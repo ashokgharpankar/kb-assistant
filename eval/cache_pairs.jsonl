@@ -1,0 +1,26 @@
+// Phase 8a: question pairs for picking the semantic-cache threshold (make cache-check).
+// same=true: one answer serves both. same=false: near misses that must NOT share an answer.
+{"a": "What is the reliability pillar?", "b": "what's the reliability pillar", "same": true, "note": "casing and contraction"}
+{"a": "What is the reliability pillar?", "b": "Can you explain the reliability pillar?", "same": true, "note": "polite paraphrase"}
+{"a": "How do I design for failure on AWS?", "b": "How should I design my AWS workload for failure?", "same": true}
+{"a": "What does RTO mean?", "b": "What is the meaning of RTO?", "same": true}
+{"a": "How can I reduce my AWS costs?", "b": "How do I lower my AWS bill?", "same": true}
+{"a": "What are the six pillars of the Well-Architected Framework?", "b": "List the six Well-Architected pillars", "same": true}
+{"a": "How do I secure root account credentials?", "b": "How should I protect the root user's credentials?", "same": true}
+{"a": "What is a game day?", "b": "what is a gameday", "same": true, "note": "spacing"}
+{"a": "How do I monitor workload health?", "b": "How can I monitor the health of my workload?", "same": true}
+{"a": "What is the shared responsibility model?", "b": "Explain the shared responsibility model", "same": true}
+{"a": "What does RTO mean?", "b": "What does RPO mean?", "same": false, "note": "one letter, different metric"}
+{"a": "What is the reliability pillar?", "b": "What is the security pillar?", "same": false}
+{"a": "How do I increase availability?", "b": "How do I decrease costs?", "same": false}
+{"a": "When should I use multi-AZ?", "b": "When should I use multi-Region?", "same": false}
+{"a": "How do I scale horizontally?", "b": "How do I scale vertically?", "same": false}
+{"a": "What should I do before a deployment?", "b": "What should I do after a deployment?", "same": false}
+{"a": "How do I encrypt data at rest?", "b": "How do I encrypt data in transit?", "same": false}
+{"a": "Should I use reserved instances?", "b": "Should I avoid reserved instances?", "same": false, "note": "negation"}
+{"a": "How do I back up DynamoDB?", "b": "How do I back up RDS?", "same": false}
+{"a": "What is the cost optimization pillar?", "b": "What is the performance efficiency pillar?", "same": false}
+{"a": "Should I enable MFA for the root user?", "b": "Should I disable MFA for the root user?", "same": false, "note": "negation (antonym verb)"}
+{"a": "When should I use spot instances?", "b": "When should I not use spot instances?", "same": false, "note": "negation (not)"}
+{"a": "Is it safe to store secrets in environment variables?", "b": "Is it unsafe to store secrets in environment variables?", "same": false, "note": "negation (prefix)"}
+{"a": "What are the benefits of multi-account?", "b": "What are the drawbacks of multi-account?", "same": false, "note": "opposite aspect"}

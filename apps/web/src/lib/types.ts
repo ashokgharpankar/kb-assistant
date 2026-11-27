@@ -34,6 +34,10 @@ export interface AskResult {
   grounding_score?: number | null
   unsupported?: string[]
   unknown_terms?: string[]
+  /** Phase 8a answer cache: "exact" or "semantic" when no model call was made. */
+  cache?: 'exact' | 'semantic' | null
+  cache_similarity?: number | null
+  cost_saved_usd?: string
 }
 
 export type StreamEvent =
