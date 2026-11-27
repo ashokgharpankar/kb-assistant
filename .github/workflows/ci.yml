@@ -123,6 +123,9 @@ jobs:
           version: v4.3.2
       - name: Helm chart
         run: make helm-check
+      # Prometheus config, alert rules and their unit tests, Grafana dashboard JSON (Phase 7a).
+      - name: Observability config
+        run: make obs-check
 
   # Build, scan and (on main) publish the container images (Phase 6a).
   images:

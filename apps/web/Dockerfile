@@ -32,7 +32,8 @@ COPY apps/web/nginx/security-headers.conf /etc/nginx/snippets/security-headers.c
 COPY --from=build /web/dist /usr/share/nginx/html
 # The nginx entrypoint substitutes these into the template at start-up. Only variables
 # defined here are substituted, so nginx's own $uri, $host… are left alone.
-ENV API_UPSTREAM=http://api:8000 \
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+    API_UPSTREAM=http://api:8000 \
     VITE_COGNITO_AUTHORITY="" \
     VITE_COGNITO_CLIENT_ID="" \
     VITE_COGNITO_DOMAIN=""

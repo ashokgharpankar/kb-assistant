@@ -1,0 +1,96 @@
+# Unit tests for the alert rules: `make obs-check` runs `promtool test rules` on this file.
+# Each series is a synthetic timeline: "a+bxN" means start at a, add b per step, N steps.
+rule_files:
+  - ../rules/kb-assistant.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: API down for 3 minutes pages; a 1-minute blip doesn't
+    interval: 1m
+    input_series:
+      - series: 'up{job="kb-api",instance="api:8000"}'
+        values: "1 1 0 0 0 0"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: KbApiDown
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: KbApiDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: kb-api
+              instance: api:8000
+            exp_annotations:
+              summary: "The API isn't answering Prometheus scrapes"
+              runbook: "docker compose ps; make app-logs; is the API container healthy?"
+
+  - name: 20% of answers failing for an hour burns the budget fast
+    interval: 1m
+    input_series:
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+8x90"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="error"}'
+        values: "0+2x90"
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: KbErrorBudgetFastBurn
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "Answers are failing fast enough to spend the 30-day error budget in ~2 days"
+              runbook: "Check the API logs for 'ask failed' / 'stream failed'; model provider and database first."
+
+  - name: 0.5% errors is within budget; no alert
+    interval: 1m
+    input_series:
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+199x90"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="error"}'
+        values: "0+1x90"
+    alert_rule_test:
+      - eval_time: 75m
+        alertname: KbErrorBudgetFastBurn
+        exp_alerts: []
+
+  - name: Refusals need volume before they alert
+    interval: 1m
+    input_series:
+      # 2 answers in 40 minutes, both refused: 100%, but too few to mean anything.
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="refused"}'
+        values: "0x20 1x20 2x20"
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: KbRefusalRatioHigh
+        exp_alerts: []
+
+  - name: Most answers refused, with enough volume, raises a ticket
+    interval: 1m
+    input_series:
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+1x60"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="refused"}'
+        values: "0+3x60"
+    alert_rule_test:
+      - eval_time: 55m
+        alertname: KbRefusalRatioHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "75% of answers in 30 min were refusals"
+              runbook: "Compare kb_retrieval_top_similarity with last week; run make eval."
+
+  - name: No errors at all reads as 0%, not "no data"
+    interval: 1m
+    input_series:
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+5x70"
+    promql_expr_test:
+      - expr: kb:answer_errors:ratio_rate1h
+        eval_time: 65m
+        exp_samples:
+          - labels: 'kb:answer_errors:ratio_rate1h'
+            value: 0
