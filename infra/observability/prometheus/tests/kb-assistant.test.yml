@@ -94,3 +94,21 @@ tests:
         exp_samples:
           - labels: 'kb:answer_errors:ratio_rate1h'
             value: 0
+
+  - name: Weakly grounded answers raise a ticket once there's volume
+    interval: 1m
+    input_series:
+      # 1 answer a minute, each with grounding 0.4.
+      - series: 'kb_answer_grounding_score_sum'
+        values: "0+0.4x90"
+      - series: 'kb_answer_grounding_score_count'
+        values: "0+1x90"
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: KbGroundingLow
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "Only 40% of answer claims are backed by their cited sources"
+              runbook: "Look at recent traces (guardrail.grounding span); run make eval and compare answer.grounding_score."

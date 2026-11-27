@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     # "pipeline": retrieve once, answer once (Phases 1-4). "agent": a LangGraph loop that
     # searches again when the answer comes back "not found" (Phase 5b, ADR 0013).
     answer_mode: Literal["pipeline", "agent"] = "pipeline"
+    # Phase 7b: input screen, refusal detection and grounding check around every answer.
+    # Off only to measure the model without them (`KB_GUARDRAILS=false kb eval`).
+    guardrails: bool = True
     # The agent's hard limit on searches per question; bounds cost and latency.
     agent_max_searches: int = Field(default=3, ge=1, le=5)
 

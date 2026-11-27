@@ -107,6 +107,23 @@ DISCONNECTS = Counter(
     "Streams stopped because the browser went away (Stop button, closed tab).",
     registry=REGISTRY,
 )
+GROUNDING = Histogram(
+    "kb_answer_grounding_score",
+    "Share of an answer's claims backed by the sources they cite (Phase 7b check).",
+    buckets=(0.0, 0.25, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0),
+    registry=REGISTRY,
+)
+UNKNOWN_TERMS = Counter(
+    "kb_answer_unknown_terms",
+    "Answers naming a product or term that appears in no retrieved source.",
+    registry=REGISTRY,
+)
+BLOCKED = Counter(
+    "kb_guardrail_blocked",
+    "Questions blocked by the input screen before retrieval, by rule.",
+    ["reason"],
+    registry=REGISTRY,
+)
 BUILD_INFO = Gauge(
     "kb_build_info",
     "Always 1; the labels say what is running.",
@@ -114,11 +131,14 @@ BUILD_INFO = Gauge(
     registry=REGISTRY,
 )
 
-OUTCOMES = ("answered", "refused", "below_floor", "error")
+OUTCOMES = ("answered", "refused", "below_floor", "blocked", "error")
 
 
 def outcome_of(answer: Answer) -> str:
-    """answered, refused (the model said "not found"), or below_floor (no model call)."""
+    """answered, refused (the model said "not found"), below_floor (no model call), or
+    blocked (the input screen stopped it before retrieval)."""
+    if answer.blocked_by:
+        return "blocked"
     if answer.answered_from_context:
         return "answered"
     # Nothing cleared the similarity floor: "not found" without calling the model ($0).
@@ -129,6 +149,14 @@ def outcome_of(answer: Answer) -> str:
 
 def record_answer(answer: Answer, endpoint: str, mode: str) -> None:
     ANSWERS.labels(endpoint=endpoint, mode=mode, outcome=outcome_of(answer)).inc()
+    if answer.blocked_by:
+        BLOCKED.labels(reason=answer.blocked_by).inc()
+        return  # nothing was retrieved or generated
+    if answer.grounding is not None:
+        if answer.grounding.score is not None:
+            GROUNDING.observe(answer.grounding.score)
+        if answer.grounding.unknown_terms:
+            UNKNOWN_TERMS.inc()
     ANSWER_DURATION.labels(endpoint=endpoint).observe(answer.total_ms / 1000)
     if answer.time_to_first_token_ms is not None:
         TIME_TO_FIRST_TOKEN.labels(endpoint=endpoint).observe(answer.time_to_first_token_ms / 1000)

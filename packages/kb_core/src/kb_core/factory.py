@@ -83,7 +83,14 @@ def build_agent(
 def build_answerer(
     settings: Settings, store: PgVectorStore | None = None, tracer: Tracer | None = None
 ) -> Answerer:
-    """The pipeline or the agent, by `KB_ANSWER_MODE`."""
-    if settings.answer_mode == "agent":
-        return build_agent(settings, store, tracer)
-    return build_pipeline(settings, store, tracer)
+    """The pipeline or the agent (`KB_ANSWER_MODE`), behind the guardrails (`KB_GUARDRAILS`)."""
+    inner: Answerer = (
+        build_agent(settings, store, tracer)
+        if settings.answer_mode == "agent"
+        else build_pipeline(settings, store, tracer)
+    )
+    if not settings.guardrails:
+        return inner
+    from kb_core.guarded import GuardedAnswerer  # avoids an import cycle (guarded -> factory types)
+
+    return GuardedAnswerer(inner)

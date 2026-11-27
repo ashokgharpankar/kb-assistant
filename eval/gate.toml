@@ -18,8 +18,12 @@
 [max]
 "answer.false_refusal_rate"    = 0.15  # answerable questions wrongly refused
 "cases.errors"                 = 0
+# Phase 7b: the input screen must never block a real question.
+"guardrail.answerable_blocked" = 0
 
 # Not gated yet, on purpose:
 # - answer.citation_validity: llama3.2 (3B) writes [REL11-BP01]-style citations;
 #   gate it once the production model is measured (Bedrock, Phase 2c).
 # - answer.groundedness: needs --judge, which is optional and slow.
+# - answer.grounding_score / answer.unknown_terms_share (Phase 7b, lexical): baseline
+#   first, then gate just below it, like hit rate in Phase 4.

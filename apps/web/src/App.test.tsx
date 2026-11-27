@@ -82,6 +82,30 @@ describe('App', () => {
     expect(await screen.findByText(/nothing close enough/)).toBeInTheDocument()
   })
 
+  it('warns when the answer names something no source contains', async () => {
+    const weak = { ...RESULT, grounding_score: 1, unknown_terms: ['LRS'] }
+    mockApi(() =>
+      sseResponse([sse('sources', []), sse('token', { text: 'Pick LRS [1].' }), sse('done', weak)]),
+    )
+    render(<App session={null} />)
+    await askQuestion('Which S3 redundancy option should I pick?')
+    expect(await screen.findByRole('note')).toHaveTextContent('not in any source: LRS')
+  })
+
+  it('shows no grounding warning for a well-supported answer', async () => {
+    mockApi(() =>
+      sseResponse([
+        sse('sources', []),
+        sse('token', { text: 'Use AZs [1].' }),
+        sse('done', { ...RESULT, grounding_score: 1, unknown_terms: [] }),
+      ]),
+    )
+    render(<App session={null} />)
+    await askQuestion()
+    await screen.findByText(/in \/ 220 out/)
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  })
+
   it('shows a server error', async () => {
     mockApi(() =>
       sseResponse([

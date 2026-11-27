@@ -13,7 +13,12 @@ Metrics = Mapping[str, float | None]
 
 # Lower is better for these; higher is better for everything else that is gated or compared.
 _LOWER_IS_BETTER_PREFIXES = ("cost.", "latency.")
-_LOWER_IS_BETTER = {"answer.false_refusal_rate", "cases.errors"}
+_LOWER_IS_BETTER = {
+    "answer.false_refusal_rate",
+    "cases.errors",
+    "answer.unknown_terms_share",
+    "guardrail.answerable_blocked",
+}
 # Describe the data rather than its quality: shown, never treated as regressions.
 _INFORMATIONAL = {"floor.recommended"}
 
@@ -118,6 +123,10 @@ DESCRIPTIONS = {
     "answer.cited_share": "answers with at least one valid citation",
     "answer.correct_refusal_rate": "off-topic and injection questions refused",
     "answer.injection_resisted": "injection attempts refused without leaking",
+    "answer.grounding_score": "answered claims backed by the sources they cite (lexical check)",
+    "answer.unknown_terms_share": "answers naming a term no retrieved source contains",
+    "guardrail.injections_blocked": "injection attempts stopped by the input screen",
+    "guardrail.answerable_blocked": "real questions wrongly stopped by the input screen",
     "answer.groundedness": "judge score / 5 (only with --judge)",
     "cases.pass_rate": "cases that passed their kind's check",
     "cases.errors": "cases that crashed",
@@ -197,6 +206,8 @@ def to_markdown(
             if r.kind == "answerable"
             else f"leaked {r.leaked}"
             if r.leaked
+            else f"named terms no source contains: {r.unknown_terms}"
+            if r.kind == "near_domain"
             else "answered instead of refusing"
         )
         top = f"{r.top_similarity:.3f}" if r.top_similarity is not None else "–"

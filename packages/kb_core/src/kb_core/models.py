@@ -73,6 +73,17 @@ class Citation:
     similarity: float
 
 
+@dataclass(frozen=True)
+class Grounding:
+    """How well an answer's sentences are backed by the sources they cite (Phase 7b)."""
+
+    score: float | None  # supported claims / claims; None when there were no claims
+    claims: int
+    supported: int
+    unsupported: list[str] = field(default_factory=list)  # sentences, for traces and eval
+    unknown_terms: list[str] = field(default_factory=list)  # terms in no retrieved chunk
+
+
 @dataclass
 class Answer:
     question: str
@@ -92,6 +103,10 @@ class Answer:
     # may search again and records each step.
     searches: int = 1
     steps: list[str] = field(default_factory=list)
+    # Guardrails (Phase 7b): why the question was blocked before retrieval, if it was,
+    # and the grounding check of the generated text.
+    blocked_by: str | None = None
+    grounding: Grounding | None = None
 
 
 # --- streaming events ----------------------------------------------------------

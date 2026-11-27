@@ -1,7 +1,7 @@
 # Incident 0009: The agent scored 100% but fixed nothing; it retried the wrong questions
 
 **Date:** 2026-11-25 · **Phase:** 5b · **Severity:** low (caught by the evaluation before becoming the default)
-**Status:** Decision made (pipeline stays the default); follow-ups listed
+**Status:** Decision made (pipeline stays the default); follow-ups 1–2 addressed in Phase 7b
 
 ## Summary
 
@@ -92,3 +92,12 @@ stronger model. The agent is still there, behind a setting, when the numbers jus
 
 Phase 5b guide (Results) · ADR 0013 · incident 0006 (the floor can't separate the groups) ·
 `eval/results/20261125T133039Z-llama3.2.json`
+
+## Update, Phase 7b (2026-11-27)
+
+- Follow-up 2: refusals are now detected by meaning, not one sentence (several "not found"
+  phrasings, and no valid citation), in `guardrails.is_refusal`, for the pipeline and the agent.
+  The two hedged non-answers now count as refusals. Structured output (`{"found": …}`) still
+  waits for a model that follows formats reliably (Bedrock).
+- Follow-up 1 (part): `design-for-failure-paraphrase` accepts "failing over". Requiring some
+  fact recall to pass is still open.

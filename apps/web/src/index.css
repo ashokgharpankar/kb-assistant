@@ -363,3 +363,12 @@ button.secondary {
 .document {
   color: var(--muted);
 }
+
+/* Phase 7b: shown when the grounding check finds unsupported claims or unknown terms. */
+.grounding-warning {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid #d97706;
+  background: rgba(217, 119, 6, 0.08);
+  font-size: 0.9rem;
+}

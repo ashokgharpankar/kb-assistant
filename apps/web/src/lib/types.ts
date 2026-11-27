@@ -30,6 +30,10 @@ export interface AskResult {
   cost_usd: string
   time_to_first_token_ms: number | null
   total_ms: number
+  /** Phase 7b grounding check; absent from older APIs, so optional. */
+  grounding_score?: number | null
+  unsupported?: string[]
+  unknown_terms?: string[]
 }
 
 export type StreamEvent =

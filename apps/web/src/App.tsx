@@ -42,6 +42,11 @@ export default function App({ session }: Props) {
     [state.result],
   )
   const notFound = state.status === 'done' && state.result && !state.result.answered_from_context
+  // Phase 7b: say so when the answer isn't fully backed by its sources, instead of hiding it.
+  const weakGrounding =
+    !notFound &&
+    state.result &&
+    ((state.result.grounding_score ?? 1) < 0.5 || (state.result.unknown_terms?.length ?? 0) > 0)
 
   const showSource = (number: number) => {
     setActive(number)
@@ -121,6 +126,15 @@ export default function App({ session }: Props) {
                     onCite={showSource}
                   />
                 )
+              )}
+              {weakGrounding && state.result && (
+                <p className="grounding-warning" role="note">
+                  Parts of this answer aren&apos;t clearly supported by the cited sources
+                  {state.result.unknown_terms?.length
+                    ? ` (not in any source: ${state.result.unknown_terms.join(', ')})`
+                    : ''}
+                  . Check the sources before relying on it.
+                </p>
               )}
               {state.result && <Metrics result={state.result} />}
             </article>

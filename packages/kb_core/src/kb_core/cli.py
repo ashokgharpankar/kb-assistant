@@ -277,6 +277,7 @@ def evaluate(
         "embedding_space": embedding_space(s).table_name,
         "retrieval": retriever.description,
         "answer_mode": s.answer_mode,
+        "guardrails": s.guardrails,
         "max_searches": s.agent_max_searches if s.answer_mode == "agent" else 1,
         "toc_depth": s.toc_depth,
         "chunk_headers": s.chunk_headers,
@@ -287,7 +288,8 @@ def evaluate(
     }
     typer.echo(
         f"Evaluating {len(cases)} cases with {config['model']} (k={s.retrieval_k}, "
-        f"floor={s.min_similarity}, retrieval={retriever.description}, answer={s.answer_mode})\n"
+        f"floor={s.min_similarity}, retrieval={retriever.description}, answer={s.answer_mode}, "
+        f"guardrails={'on' if s.guardrails else 'off'})\n"
     )
     run = run_eval(
         cases,
@@ -324,7 +326,10 @@ def evaluate(
         baseline.write_text(json.dumps(run.to_dict(), indent=2), encoding="utf-8")
         typer.echo(f"Baseline updated: {baseline}")
 
-    regressions = [d.name for d in deltas or [] if d.regressed]
+    # A run that becomes the new baseline is the reference from now on: report its changes,
+    # but only the absolute gate can fail it (otherwise a dataset change could never be
+    # re-baselined without a red exit code).
+    regressions = [] if update_baseline else [d.name for d in deltas or [] if d.regressed]
     if gate_failures or regressions:
         if regressions:
             typer.echo(f"Regressed against the baseline: {', '.join(regressions)}")
