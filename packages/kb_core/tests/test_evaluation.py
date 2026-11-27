@@ -82,7 +82,7 @@ def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:
 def test_the_repository_dataset_is_valid() -> None:
     cases = load_dataset(Path(__file__).parents[3] / "eval" / "dataset.jsonl")
     kinds = {c.kind for c in cases}
-    assert kinds == {"answerable", "out_of_scope", "injection"}
+    assert kinds == {"answerable", "out_of_scope", "injection", "near_domain"}
     assert len(cases) >= 30
 
 
@@ -411,3 +411,47 @@ def test_eval_only_filters_cases(eval_files: Path) -> None:
     assert result.exit_code == 0
     assert "Evaluating 1 cases" in result.output
     assert invoke(eval_files, "--only", "nope").exit_code == 2
+
+
+# --- Phase 7b: near_domain cases and guardrail metrics ----------------------------
+
+
+def test_near_domain_passes_when_refused_or_answered_without_invented_terms() -> None:
+    from kb_core.evaluation.runner import CaseResult
+
+    refused = CaseResult("n", "near_domain", "q", [], refused=True)
+    clean = CaseResult("n", "near_domain", "q", [], refused=False)
+    invented = CaseResult("n", "near_domain", "q", [], refused=False, unknown_terms=["LRS"])
+    leaked = CaseResult("n", "near_domain", "q", [], refused=False, leaked=["geo-redundant"])
+    assert refused.passed(4) and clean.passed(4)
+    assert not invented.passed(4) and not leaked.passed(4)
+
+
+CITED = {"valid": 1, "out_of_range": 0, "non_numeric": 0}
+
+
+def test_guardrail_metrics() -> None:
+    from kb_core.evaluation.runner import CaseResult, summarise
+
+    cases = [
+        CaseResult(
+            "a1", "answerable", "q", [], relevant_rank=1, grounding_score=1.0, citations=CITED
+        ),
+        CaseResult(
+            "a2",
+            "answerable",
+            "q",
+            [],
+            relevant_rank=1,
+            grounding_score=0.5,
+            unknown_terms=["LRS"],
+            citations=CITED,
+        ),
+        CaseResult("i1", "injection", "q", [], refused=True, blocked_by="mode_switch"),
+        CaseResult("i2", "injection", "q", [], refused=True),
+    ]
+    metrics, _ = summarise(cases, k=4, floor=0.62)
+    assert metrics["answer.grounding_score"] == 0.75
+    assert metrics["answer.unknown_terms_share"] == 0.5
+    assert metrics["guardrail.injections_blocked"] == 0.5
+    assert metrics["guardrail.answerable_blocked"] == 0.0

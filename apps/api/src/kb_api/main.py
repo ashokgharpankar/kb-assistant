@@ -90,6 +90,11 @@ class AskResponse(BaseModel):
     cost_usd: str  # string so no precision is lost in JSON
     time_to_first_token_ms: float | None = None
     total_ms: float = 0.0
+    # Phase 7b grounding check: share of the answer's claims backed by the sources they
+    # cite, the sentences that weren't, and names that appear in no retrieved source.
+    grounding_score: float | None = None
+    unsupported: list[str] = []
+    unknown_terms: list[str] = []
 
 
 class Pipeline(Protocol):
@@ -127,6 +132,7 @@ def prometheus_metrics() -> Response:
 
 
 def to_response(answer: Answer) -> AskResponse:
+    g = answer.grounding
     return AskResponse(
         answer=answer.text,
         citations=[
@@ -146,6 +152,9 @@ def to_response(answer: Answer) -> AskResponse:
         cost_usd=str(answer.cost_usd),
         time_to_first_token_ms=answer.time_to_first_token_ms,
         total_ms=answer.total_ms,
+        grounding_score=None if g is None or g.score is None else round(g.score, 3),
+        unsupported=[] if g is None else list(g.unsupported),
+        unknown_terms=[] if g is None else list(g.unknown_terms),
     )
 
 

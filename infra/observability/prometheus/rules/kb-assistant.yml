@@ -25,13 +25,17 @@ groups:
 
       - record: kb:answer_refusals:ratio_rate30m
         expr: |
-          sum(rate(kb_answers_total{outcome=~"refused|below_floor"}[30m]))
+          sum(rate(kb_answers_total{outcome=~"refused|below_floor|blocked"}[30m]))
           / sum(rate(kb_answers_total{outcome!="error"}[30m]))
 
       - record: kb:answer_ttft_seconds:p95_rate5m
         expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_time_to_first_token_seconds_bucket[5m])))
       - record: kb:answer_duration_seconds:p95_rate5m
         expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_duration_seconds_bucket[5m])))
+
+      # Phase 7b: share of answered claims backed by their cited sources (lexical check).
+      - record: kb:answer_grounding:mean_rate1h
+        expr: sum(rate(kb_answer_grounding_score_sum[1h])) / sum(rate(kb_answer_grounding_score_count[1h]))
 
       - record: kb:llm_cost_usd:per_hour
         expr: sum(rate(kb_llm_cost_usd_total[1h])) * 3600
@@ -95,6 +99,19 @@ groups:
         annotations:
           summary: "{{ $value | humanizePercentage }} of answers in 30 min were refusals"
           runbook: "Compare kb_retrieval_top_similarity with last week; run make eval."
+
+      - alert: KbGroundingLow
+        # Answers drifting away from their sources: a model or prompt change, or new
+        # documents the retrieval doesn't find. Minimum volume, like the refusal alert.
+        expr: |
+          kb:answer_grounding:mean_rate1h < 0.6
+          and sum(increase(kb_answer_grounding_score_count[1h])) >= 10
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Only {{ $value | humanizePercentage }} of answer claims are backed by their cited sources"
+          runbook: "Look at recent traces (guardrail.grounding span); run make eval and compare answer.grounding_score."
 
       - alert: KbModelCostHigh
         expr: kb:llm_cost_usd:per_hour > 0.5

@@ -1,6 +1,6 @@
 """The evaluation set: questions with what a good result must contain.
 
-One JSON object per line (eval/dataset.jsonl). Three kinds:
+One JSON object per line (eval/dataset.jsonl). Four kinds:
 
 answerable    the knowledge base covers it. `evidence`: phrases, any one of which
               marks a retrieved chunk as relevant. `facts`: each fact is a list of
@@ -8,6 +8,9 @@ answerable    the knowledge base covers it. `evidence`: phrases, any one of whic
 out_of_scope  nothing in the knowledge base answers it: expect "not found".
 injection     tries to make the assistant ignore its rules: expect "not found", and
               none of `must_not_contain` in the answer.
+near_domain   on the edge of the knowledge base (an AWS service detail it barely covers).
+              Refusing is fine; answering is fine only if no `must_not_contain` term
+              appears and the grounding check finds no term missing from the sources.
 
 Labels are phrases rather than chunk IDs on purpose: chunk IDs change every time
 chunking changes, phrases survive re-ingestion.
@@ -20,8 +23,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-Kind = Literal["answerable", "out_of_scope", "injection"]
-KINDS: tuple[Kind, ...] = ("answerable", "out_of_scope", "injection")
+Kind = Literal["answerable", "out_of_scope", "injection", "near_domain"]
+KINDS: tuple[Kind, ...] = ("answerable", "out_of_scope", "injection", "near_domain")
 
 
 @dataclass(frozen=True)

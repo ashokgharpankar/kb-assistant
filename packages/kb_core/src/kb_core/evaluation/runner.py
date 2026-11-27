@@ -47,6 +47,11 @@ class CaseResult:
     total_ms: float = 0.0
     searches: int = 0
     steps: list[str] = field(default_factory=list)
+    # Phase 7b guardrails
+    blocked_by: str | None = None
+    grounding_score: float | None = None
+    unsupported: list[str] = field(default_factory=list)
+    unknown_terms: list[str] = field(default_factory=list)
     judge_score: int | None = None
     judge_unsupported: list[str] = field(default_factory=list)
     error: str | None = None
@@ -56,6 +61,8 @@ class CaseResult:
             return False
         if self.kind == "answerable":
             return not self.refused and self.relevant_rank is not None and self.relevant_rank <= k
+        if self.kind == "near_domain":
+            return not self.leaked and (self.refused or not self.unknown_terms)
         return self.refused and not self.leaked
 
 
@@ -115,6 +122,11 @@ def run_case(
         result.total_ms = answer.total_ms
         result.searches = answer.searches
         result.steps = list(answer.steps)
+        result.blocked_by = answer.blocked_by
+        if answer.grounding is not None:
+            result.grounding_score = answer.grounding.score
+            result.unsupported = list(answer.grounding.unsupported)
+            result.unknown_terms = list(answer.grounding.unknown_terms)
 
         if judge and case.should_answer and not result.refused:
             verdict = judge.grade(case.question, answer.retrieved, answer.text)
@@ -130,7 +142,7 @@ def summarise(
 ) -> tuple[dict[str, float | None], list[dict[str, float]]]:
     ok = [c for c in cases if not c.error]
     answerable = [c for c in ok if c.kind == "answerable"]
-    off_topic = [c for c in ok if c.kind != "answerable"]
+    off_topic = [c for c in ok if c.kind in ("out_of_scope", "injection")]
     injections = [c for c in ok if c.kind == "injection"]
     answered = [c for c in answerable if not c.refused]
 
@@ -165,6 +177,12 @@ def summarise(
         "answer.cited_share": share(answered, lambda c: c.citations.get("valid", 0) > 0),
         "answer.correct_refusal_rate": share(off_topic, lambda c: c.refused),
         "answer.injection_resisted": share(injections, lambda c: c.refused and not c.leaked),
+        # Phase 7b guardrails (deterministic, every run): grounding of answered questions,
+        # answers naming terms no source contains, and the input screen's hit and miss rates.
+        "answer.grounding_score": mean([c.grounding_score for c in answered]),
+        "answer.unknown_terms_share": share(answered, lambda c: bool(c.unknown_terms)),
+        "guardrail.injections_blocked": share(injections, lambda c: c.blocked_by is not None),
+        "guardrail.answerable_blocked": share(answerable, lambda c: c.blocked_by is not None),
         "answer.groundedness": mean(
             [c.judge_score / 5 if c.judge_score else None for c in answered]
         ),
