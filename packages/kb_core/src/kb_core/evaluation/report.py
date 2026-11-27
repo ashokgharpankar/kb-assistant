@@ -76,17 +76,26 @@ def load_gate(path: Path) -> dict[str, dict[str, float]]:
     return {"min": dict(data.get("min", {})), "max": dict(data.get("max", {}))}
 
 
-def check_gate(metrics: Metrics, gate: Mapping[str, Mapping[str, float]]) -> list[str]:
-    """Each failure as a sentence. A gated metric that wasn't measured also fails."""
+def check_gate(
+    metrics: Metrics,
+    gate: Mapping[str, Mapping[str, float]],
+    skip_unmeasured: bool = False,
+) -> list[str]:
+    """Each failure as a sentence. A gated metric that wasn't measured also fails, unless
+    `skip_unmeasured` (a retrieval-only run can't measure answer metrics)."""
     failures = []
     for name, minimum in gate.get("min", {}).items():
         value = metrics.get(name)
+        if value is None and skip_unmeasured:
+            continue
         if value is None:
             failures.append(f"{name}: not measured (gate needs >= {minimum})")
         elif value < minimum:
             failures.append(f"{name} = {value:.3f}, below the minimum {minimum}")
     for name, maximum in gate.get("max", {}).items():
         value = metrics.get(name)
+        if value is None and skip_unmeasured:
+            continue
         if value is None:
             failures.append(f"{name}: not measured (gate needs <= {maximum})")
         elif value > maximum:
@@ -195,6 +204,19 @@ def to_markdown(
                 f"| {p['threshold']:.2f}{marker} | {p['answerable_kept']:.0%} | "
                 f"{p['off_topic_rejected']:.0%} |"
             )
+
+    if c.get("retrieval_only"):
+        # No answers: only retrieval can fail. Off-topic cases have nothing to judge.
+        missed = [
+            r
+            for r in run.cases
+            if r.error or (r.kind == "answerable" and (r.relevant_rank or k + 1) > k)
+        ]
+        lines += ["", f"## Retrieval misses ({len(missed)})", ""]
+        for r in missed:
+            why = r.error or f"evidence not in top {k} (rank {r.relevant_rank})"
+            lines.append(f"- **{r.id}**: {why}. _{r.question}_")
+        return "\n".join(lines) + "\n"
 
     failed = [r for r in run.cases if not r.passed(k)]
     lines += ["", f"## Cases that did not pass ({len(failed)})", ""]

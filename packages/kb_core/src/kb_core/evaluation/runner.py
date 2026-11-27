@@ -20,6 +20,7 @@ from kb_core.evaluation.metrics import (
     mean,
     percentile,
 )
+from kb_core.guardrails import screen_question
 from kb_core.models import Answer, RetrievedChunk
 
 RetrieveFn = Callable[[str, int], list[RetrievedChunk]]  # (question, depth) -> ranked, no floor
@@ -85,10 +86,12 @@ class EvalRun:
 def run_case(
     case: EvalCase,
     retrieve: RetrieveFn,
-    answer_fn: AnswerFn,
+    answer_fn: AnswerFn | None,
     depth: int,
     judge: LLMJudge | None,
 ) -> CaseResult:
+    """Score one case. With `answer_fn=None` (retrieval-only, Phase 7c) only retrieval, the
+    similarity floor and the input screen are measured: no model call, deterministic."""
     result = CaseResult(case.id, case.kind, case.question, list(case.tags))
     try:
         ranked = retrieve(case.question, depth)
@@ -103,6 +106,10 @@ def run_case(
             result.relevant_rank = first_relevant_rank(
                 [r.chunk.text for r in ranked], case.evidence
             )
+
+        if answer_fn is None:
+            result.blocked_by = screen_question(case.question).reason
+            return result
 
         answer = answer_fn(case.question)
         result.answer = answer.text
@@ -150,7 +157,7 @@ def summarise(
         return sum(1 for c in items if test(c)) / len(items) if items else None
 
     ranks = [c.relevant_rank for c in answerable]
-    checks = [CitationCheck(**c.citations) for c in answered]
+    checks = [CitationCheck(**c.citations) for c in answered if c.citations]
     all_markers = sum(ch.total for ch in checks)
     floor_analysis = analyse_floor(
         [c.top_similarity for c in answerable if c.top_similarity is not None],
@@ -209,10 +216,14 @@ def summarise(
     return metrics, points
 
 
+# Metrics that need a generated answer; absent (None) in a retrieval-only run.
+_NEEDS_ANSWERS = ("answer.", "cost.", "latency.", "cases.pass_rate")
+
+
 def run_eval(
     cases: Sequence[EvalCase],
     retrieve: RetrieveFn,
-    answer_fn: AnswerFn,
+    answer_fn: AnswerFn | None,
     config: dict[str, Any],
     k: int,
     floor: float,
@@ -227,6 +238,8 @@ def run_eval(
             on_case(result)
         results.append(result)
     metrics, points = summarise(results, k, floor)
+    if answer_fn is None:
+        metrics = {n: (None if n.startswith(_NEEDS_ANSWERS) else v) for n, v in metrics.items()}
     return EvalRun(
         config={**config, "k": k, "floor": floor, "depth": depth},
         metrics=metrics,
