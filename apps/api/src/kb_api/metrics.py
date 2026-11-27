@@ -1,0 +1,174 @@
+"""Prometheus metrics (Phase 7a).
+
+Two layers:
+
+- HTTP (RED: rate, errors, duration) for every endpoint, labelled by the route
+  *template* ("/ask/stream"), never the raw path, so label values stay bounded.
+- Answers: what a user and a budget owner care about. Time to first token, total
+  time, outcome (answered, refused, below the similarity floor, error), tokens and
+  cost by model, retrieval time and the best similarity score.
+
+Traces (Langfuse) answer "why was this one answer bad?"; metrics answer "how are all
+answers doing, and is it getting worse?". Neither replaces the other.
+
+/metrics is served on the API port only. nginx forwards /api/ and nothing else, and in
+AWS the load balancer reaches the web container only, so it isn't public.
+"""
+
+from __future__ import annotations
+
+import time
+from collections.abc import Awaitable, Callable
+
+from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
+from starlette.requests import Request
+from starlette.responses import Response
+from starlette.routing import Match
+
+from kb_core.models import Answer
+
+# One registry for the app (not the global default), so tests can read it directly
+# and nothing from imported libraries leaks in by accident.
+REGISTRY = CollectorRegistry(auto_describe=True)
+
+# Seconds. Local models are slow (several seconds to first token), hosted ones fast;
+# the buckets cover both so the same dashboard works on Ollama and Bedrock.
+LATENCY_BUCKETS = (0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 8, 13, 20, 30, 60)
+SIMILARITY_BUCKETS = (0.3, 0.4, 0.5, 0.55, 0.6, 0.62, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9)
+
+HTTP_REQUESTS = Counter(
+    "kb_http_requests",
+    "HTTP requests by route template, method and status code.",
+    ["method", "route", "status"],
+    registry=REGISTRY,
+)
+HTTP_DURATION = Histogram(
+    "kb_http_request_duration_seconds",
+    "Time until the response starts. For /ask/stream that is the headers, not the whole "
+    "answer: see kb_answer_duration_seconds.",
+    ["method", "route"],
+    buckets=LATENCY_BUCKETS,
+    registry=REGISTRY,
+)
+
+ANSWERS = Counter(
+    "kb_answers",
+    "Answers by endpoint, mode (pipeline or agent) and outcome.",
+    ["endpoint", "mode", "outcome"],
+    registry=REGISTRY,
+)
+TIME_TO_FIRST_TOKEN = Histogram(
+    "kb_answer_time_to_first_token_seconds",
+    "From question to the first generated token: what a user feels.",
+    ["endpoint"],
+    buckets=LATENCY_BUCKETS,
+    registry=REGISTRY,
+)
+ANSWER_DURATION = Histogram(
+    "kb_answer_duration_seconds",
+    "From question to the complete answer.",
+    ["endpoint"],
+    buckets=LATENCY_BUCKETS,
+    registry=REGISTRY,
+)
+RETRIEVAL_DURATION = Histogram(
+    "kb_retrieval_duration_seconds",
+    "Embedding the question plus the hybrid search.",
+    buckets=LATENCY_BUCKETS,
+    registry=REGISTRY,
+)
+TOP_SIMILARITY = Histogram(
+    "kb_retrieval_top_similarity",
+    "Best cosine similarity among retrieved chunks. A falling median means questions "
+    "are drifting away from the knowledge base.",
+    buckets=SIMILARITY_BUCKETS,
+    registry=REGISTRY,
+)
+SEARCHES = Histogram(
+    "kb_answer_searches",
+    "Searches per answer (1 for the pipeline; up to the agent's limit).",
+    buckets=(1, 2, 3, 4, 5),
+    registry=REGISTRY,
+)
+TOKENS = Counter(
+    "kb_llm_tokens",
+    "Model tokens by model and direction (input or output).",
+    ["model", "direction"],
+    registry=REGISTRY,
+)
+COST = Counter(
+    "kb_llm_cost_usd",
+    "Model cost in US dollars, by model (0 for local models).",
+    ["model"],
+    registry=REGISTRY,
+)
+DISCONNECTS = Counter(
+    "kb_stream_disconnects",
+    "Streams stopped because the browser went away (Stop button, closed tab).",
+    registry=REGISTRY,
+)
+BUILD_INFO = Gauge(
+    "kb_build_info",
+    "Always 1; the labels say what is running.",
+    ["version", "env", "provider", "mode"],
+    registry=REGISTRY,
+)
+
+OUTCOMES = ("answered", "refused", "below_floor", "error")
+
+
+def outcome_of(answer: Answer) -> str:
+    """answered, refused (the model said "not found"), or below_floor (no model call)."""
+    if answer.answered_from_context:
+        return "answered"
+    # Nothing cleared the similarity floor: "not found" without calling the model ($0).
+    if not answer.retrieved:
+        return "below_floor"
+    return "refused"
+
+
+def record_answer(answer: Answer, endpoint: str, mode: str) -> None:
+    ANSWERS.labels(endpoint=endpoint, mode=mode, outcome=outcome_of(answer)).inc()
+    ANSWER_DURATION.labels(endpoint=endpoint).observe(answer.total_ms / 1000)
+    if answer.time_to_first_token_ms is not None:
+        TIME_TO_FIRST_TOKEN.labels(endpoint=endpoint).observe(answer.time_to_first_token_ms / 1000)
+    RETRIEVAL_DURATION.observe(answer.retrieval_ms / 1000)
+    if answer.retrieved:
+        TOP_SIMILARITY.observe(max(r.similarity for r in answer.retrieved))
+    SEARCHES.observe(answer.searches)
+    if answer.model:
+        TOKENS.labels(model=answer.model, direction="input").inc(answer.input_tokens)
+        TOKENS.labels(model=answer.model, direction="output").inc(answer.output_tokens)
+        COST.labels(model=answer.model).inc(float(answer.cost_usd))
+
+
+def record_error(endpoint: str, mode: str) -> None:
+    ANSWERS.labels(endpoint=endpoint, mode=mode, outcome="error").inc()
+
+
+def route_template(request: Request) -> str:
+    """The matched route's path template, or "unmatched" (bounded label values)."""
+    for route in request.app.router.routes:
+        match, _ = route.matches(request.scope)
+        if match is Match.FULL:
+            return str(getattr(route, "path", "unmatched"))
+    return "unmatched"
+
+
+async def http_metrics_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    if request.url.path == "/metrics":  # don't measure the scraper
+        return await call_next(request)
+    route = route_template(request)
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        HTTP_DURATION.labels(method=request.method, route=route).observe(
+            time.perf_counter() - start
+        )
+        HTTP_REQUESTS.labels(method=request.method, route=route, status=str(status)).inc()

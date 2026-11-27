@@ -1,0 +1,11 @@
+# Dashboards as code: Grafana loads every JSON file in /etc/grafana/dashboards.
+# Edits made in the UI are lost on restart; export the JSON and commit it instead.
+apiVersion: 1
+providers:
+  - name: kb-assistant
+    folder: KB Assistant
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards

@@ -1,0 +1,129 @@
+from collections.abc import Iterator
+from decimal import Decimal
+
+import pytest
+from fastapi.testclient import TestClient
+
+from kb_api import main, metrics
+from kb_core.models import Answer, Chunk, DoneEvent, RetrievedChunk, SourcesEvent, StreamEvent
+
+HIT = RetrievedChunk(Chunk("f:1", "f", 1, "Use AZs.", "Reliability", 12), "F", "file:///f", 0.81)
+
+
+def value(name: str, **labels: str) -> float:
+    return metrics.REGISTRY.get_sample_value(name, labels) or 0.0
+
+
+class Pipeline:
+    def __init__(self, answer: Answer) -> None:
+        self._answer = answer
+
+    def answer(self, question: str) -> Answer:
+        return self._answer
+
+    def stream(self, question: str) -> Iterator[StreamEvent]:
+        yield SourcesEvent(self._answer.retrieved)
+        yield DoneEvent(self._answer)
+
+
+class Broken:
+    def answer(self, question: str) -> Answer:
+        raise RuntimeError("model down")
+
+    def stream(self, question: str) -> Iterator[StreamEvent]:
+        raise RuntimeError("model down")
+        yield  # pragma: no cover
+
+
+def use(pipeline: object) -> TestClient:
+    main.app.dependency_overrides[main.get_pipeline] = lambda: pipeline
+    return TestClient(main.app)
+
+
+def answered() -> Answer:
+    return Answer(
+        question="q",
+        text="Use AZs [1].",
+        model="amazon.nova-micro-v1:0",
+        input_tokens=900,
+        output_tokens=40,
+        cost_usd=Decimal("0.0000371"),
+        retrieved=[HIT],
+        retrieval_ms=40,
+        time_to_first_token_ms=500,
+        total_ms=1500,
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        (answered(), "answered"),
+        (
+            Answer(
+                question="q",
+                text="not found",
+                retrieved=[HIT],
+                answered_from_context=False,
+                output_tokens=9,
+            ),
+            "refused",
+        ),
+        (Answer(question="q", text="not found", answered_from_context=False), "below_floor"),
+    ],
+)
+def test_outcome_of(answer: Answer, expected: str) -> None:
+    assert metrics.outcome_of(answer) == expected
+
+
+def test_ask_records_outcome_latency_tokens_and_cost() -> None:
+    model = "amazon.nova-micro-v1:0"
+    before = {
+        "answers": value("kb_answers_total", endpoint="ask", mode="pipeline", outcome="answered"),
+        "ttft": value("kb_answer_time_to_first_token_seconds_count", endpoint="ask"),
+        "out": value("kb_llm_tokens_total", model=model, direction="output"),
+        "cost": value("kb_llm_cost_usd_total", model=model),
+    }
+    response = use(Pipeline(answered())).post("/ask", json={"question": "How do I stay up?"})
+    assert response.status_code == 200
+    assert (
+        value("kb_answers_total", endpoint="ask", mode="pipeline", outcome="answered")
+        == before["answers"] + 1
+    )
+    assert (
+        value("kb_answer_time_to_first_token_seconds_count", endpoint="ask") == before["ttft"] + 1
+    )
+    assert value("kb_llm_tokens_total", model=model, direction="output") == before["out"] + 40
+    assert value("kb_llm_cost_usd_total", model=model) == pytest.approx(before["cost"] + 0.0000371)
+
+
+def test_stream_error_is_counted_even_though_http_says_200() -> None:
+    before = value("kb_answers_total", endpoint="stream", mode="pipeline", outcome="error")
+    with use(Broken()).stream("POST", "/ask/stream", json={"question": "How?"}) as response:
+        assert response.status_code == 200
+        assert "event: error" in "".join(response.iter_text())
+    assert (
+        value("kb_answers_total", endpoint="stream", mode="pipeline", outcome="error") == before + 1
+    )
+
+
+def test_http_metrics_use_route_templates_not_raw_paths() -> None:
+    client = use(Pipeline(answered()))
+    before = value("kb_http_requests_total", method="GET", route="unmatched", status="404")
+    client.get("/no-such-page/12345")
+    client.get("/another-random-path")
+    # Two different unknown paths share one label value: no cardinality explosion.
+    assert (
+        value("kb_http_requests_total", method="GET", route="unmatched", status="404") == before + 2
+    )
+
+
+def test_metrics_endpoint_serves_prometheus_text() -> None:
+    client = use(Pipeline(answered()))
+    client.get("/health")
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert 'kb_http_requests_total{method="GET",route="/health",status="200"}' in response.text
+    # The scraper's own requests aren't counted.
+    assert 'route="/metrics"' not in response.text

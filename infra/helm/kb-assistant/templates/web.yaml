@@ -41,7 +41,9 @@ spec:
               containerPort: 8080
           env:
             - name: API_UPSTREAM
-              value: "http://{{ .Release.Name }}-api:8000"
+              # Full DNS name: nginx resolves at request time with its own resolver,
+              # which doesn't apply the pod's search domains ("kb-api" alone fails).
+              value: "http://{{ .Release.Name }}-api.{{ .Release.Namespace }}.svc.cluster.local:8000"
             - name: VITE_COGNITO_AUTHORITY
               value: {{ .Values.web.cognito.authority | quote }}
             - name: VITE_COGNITO_CLIENT_ID

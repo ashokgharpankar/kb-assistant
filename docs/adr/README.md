@@ -25,7 +25,7 @@ decision gets a new ADR that supersedes the old one.
 | [0014](0014-ecs-fargate-for-the-app.md) | ECS Fargate for the app, a one-off task for ingestion | 6c | Proposed |
 | [0015](0015-network-without-nat.md) | Network design without a NAT Gateway | 6c | Proposed |
 | [0024](0024-aurora-serverless-for-aws.md) | Aurora Serverless v2 with pgvector in AWS | 6c | Proposed |
-| 0016 | Observability stack | 7 | Planned |
+| [0016](0016-observability-metrics.md) | Prometheus metrics and Grafana dashboards; traces stay in Langfuse | 7a | Accepted |
 | 0017 | Guardrails and prompt-injection handling | 7 | Planned |
 | 0018 | Caching strategy | 8 | Planned |
 | 0019 | Model routing by cost and quality | 8 | Planned |

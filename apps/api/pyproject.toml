@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "kb-core",
     "pyjwt[crypto]>=2.10",
+    "prometheus-client>=0.25",
 ]
 
 [build-system]

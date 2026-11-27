@@ -6,7 +6,7 @@ TF_DEV  := infra/terraform/envs/dev
 TFLINT  := $(shell command -v tflint 2>/dev/null || echo docker run --rm -v "$(CURDIR)":/data -t ghcr.io/terraform-linters/tflint)
 
 .DEFAULT_GOAL := help
-.PHONY: ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
+.PHONY: obs-up obs-down obs-reload obs-check metrics ecr-digests tf-plan-app eval eval-agent eval-judge eval-baseline help doctor setup up down langfuse-up langfuse-down lint fmt test test-integration coverage api mcp mcp-http mcp-smoke mcp-inspector \
         smoke-ollama smoke-bedrock fetch-sources init-db ingest ask ask-agent stats data-quality duplicates \
         web-setup web-dev web-demo web-lint web-test web-build \
         docker-build app-up app-down app-logs scan \
@@ -125,6 +125,35 @@ app-down: ## Stop the api and web containers (local Postgres keeps running)
 
 app-logs: ## Follow the api and web container logs
 	$(COMPOSE_APP) logs -f api web
+
+# --- observability (Phase 7a) -------------------------------------------------
+COMPOSE_OBS = $(COMPOSE_APP) -f infra/local/docker-compose.observability.yml
+PROMETHEUS_IMAGE := prom/prometheus:v3.13.5
+OBS_DIR := infra/observability
+
+obs-up: ## Start Prometheus (localhost:9095) and Grafana (localhost:3001) for the app containers
+	$(COMPOSE_OBS) up -d prometheus grafana
+	@echo "Grafana: http://localhost:3001  (dashboard: KB Assistant: overview)"
+	@echo "Prometheus: http://localhost:9095/targets  and  /alerts"
+
+obs-down: ## Stop Prometheus and Grafana (their data volumes are kept)
+	$(COMPOSE_OBS) rm --stop --force prometheus grafana
+
+obs-reload: ## Reload Prometheus rules after editing them
+	curl -fsS -X POST http://localhost:9095/-/reload && echo "reloaded"
+
+obs-check: ## Validate the Prometheus config, rules, rule unit tests and the dashboard JSON
+	docker run --rm --entrypoint promtool \
+	  -v "$(CURDIR)/$(OBS_DIR)/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+	  -v "$(CURDIR)/$(OBS_DIR)/prometheus/rules:/etc/prometheus/rules:ro" \
+	  $(PROMETHEUS_IMAGE) check config /etc/prometheus/prometheus.yml
+	docker run --rm --entrypoint promtool -w /p/tests \
+	  -v "$(CURDIR)/$(OBS_DIR)/prometheus:/p:ro" \
+	  $(PROMETHEUS_IMAGE) test rules kb-assistant.test.yml
+	python3 -m json.tool $(OBS_DIR)/grafana/dashboards/kb-assistant-overview.json > /dev/null && echo "dashboard JSON OK"
+
+metrics: ## Show the API's own metrics (needs the API running on localhost:8000)
+	@curl -fsS http://localhost:8000/metrics | grep -E "^kb_" | grep -v "_bucket" | head -40
 
 scan: ## Scan the local images with trivy and the repo with checkov (needs both installed)
 	trivy image --severity HIGH,CRITICAL --ignore-unfixed kb-assistant-api:local

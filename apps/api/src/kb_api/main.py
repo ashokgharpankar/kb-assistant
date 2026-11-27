@@ -1,6 +1,7 @@
 """API entry point.
 
 GET  /health      open: liveness, version, provider, auth mode
+GET  /metrics     open on the API port only: Prometheus metrics (Phase 7a); not routed by nginx
 POST /ask         signed in: one JSON response when the answer is complete
 POST /ask/stream  signed in: Server-Sent Events: sources, tokens as they're written, done
 
@@ -19,7 +20,8 @@ from functools import lru_cache
 from typing import Annotated, Any, Protocol
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool
 
@@ -28,6 +30,7 @@ from kb_core.factory import build_answerer
 from kb_core.models import Answer, DoneEvent, SourcesEvent, StreamEvent, TokenEvent
 from kb_core.settings import get_settings
 
+from . import metrics
 from .auth import CurrentUser, get_verifier
 
 # Our own log lines (errors, early stops) next to uvicorn's. No-op if logging is
@@ -42,10 +45,19 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # configured stops the server with a clear message.
     verifier = get_verifier()
     log.info("auth: %s", "cognito" if verifier else "DISABLED (local only)")
+    s = get_settings()
+    metrics.BUILD_INFO.labels(
+        version=__version__, env=s.env, provider=s.llm_provider, mode=s.answer_mode
+    ).set(1)
     yield
 
 
 app = FastAPI(title="KB Assistant API", version=__version__, lifespan=lifespan)
+app.middleware("http")(metrics.http_metrics_middleware)
+
+
+def answer_mode() -> str:
+    return get_settings().answer_mode
 
 
 class Health(BaseModel):
@@ -109,6 +121,11 @@ def health(provider: Annotated[str, Depends(provider_label)]) -> Health:
     )
 
 
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics() -> Response:
+    return Response(generate_latest(metrics.REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
+
 def to_response(answer: Answer) -> AskResponse:
     return AskResponse(
         answer=answer.text,
@@ -141,7 +158,9 @@ def ask(body: AskRequest, pipeline: PipelineDep, user: CurrentUser) -> AskRespon
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         log.exception("ask failed")  # full detail in our logs, generic message to the client
+        metrics.record_error("ask", answer_mode())
         raise HTTPException(status_code=503, detail="answering is temporarily unavailable") from exc
+    metrics.record_answer(answer, "ask", answer_mode())
     return to_response(answer)
 
 
@@ -183,10 +202,13 @@ def event_stream(pipeline: Pipeline, question: str) -> Iterator[str]:
             elif isinstance(event, TokenEvent):
                 yield sse("token", {"text": event.text})
             elif isinstance(event, DoneEvent):
+                metrics.record_answer(event.answer, "stream", answer_mode())
                 yield sse("done", to_response(event.answer).model_dump())
     except Exception:
         # Headers (200) are already sent once streaming starts, so errors travel as an event.
+        # The HTTP status stays 200, so this counter is the only place the failure shows.
         log.exception("stream failed")
+        metrics.record_error("stream", answer_mode())
         yield sse("error", {"detail": "answering is temporarily unavailable"})
 
 
@@ -207,6 +229,7 @@ async def stop_on_disconnect(request: Disconnectable, events: Iterator[str]) -> 
         async for chunk in iterate_in_threadpool(events):
             if await request.is_disconnected():
                 log.info("client disconnected; generation stopped early")
+                metrics.DISCONNECTS.inc()
                 break
             yield chunk
     finally:

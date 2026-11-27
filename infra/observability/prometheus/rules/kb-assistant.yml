@@ -1,0 +1,106 @@
+# Recording rules and alerts for the knowledge assistant (Phase 7a).
+# Tested with `make obs-check` (promtool check + unit tests in ../tests/kb-assistant.test.yml).
+#
+# SLO used here: 99% of answers complete without an error, over 30 days.
+# Error budget = 1%. Burn rate = how fast that budget is being spent
+# (1 = exactly on budget; 14.4 = a 30-day budget gone in about 2 days).
+
+groups:
+  - name: kb-assistant.recording
+    rules:
+      - record: kb:answers:rate5m
+        expr: sum(rate(kb_answers_total[5m]))
+
+      # "or vector(0)": with no errors yet there is no error series at all, and the
+      # ratio would be empty ("No data") instead of 0%.
+
+      - record: kb:answer_errors:ratio_rate5m
+        expr: (sum(rate(kb_answers_total{outcome="error"}[5m])) or vector(0)) / sum(rate(kb_answers_total[5m]))
+      - record: kb:answer_errors:ratio_rate30m
+        expr: (sum(rate(kb_answers_total{outcome="error"}[30m])) or vector(0)) / sum(rate(kb_answers_total[30m]))
+      - record: kb:answer_errors:ratio_rate1h
+        expr: (sum(rate(kb_answers_total{outcome="error"}[1h])) or vector(0)) / sum(rate(kb_answers_total[1h]))
+      - record: kb:answer_errors:ratio_rate6h
+        expr: (sum(rate(kb_answers_total{outcome="error"}[6h])) or vector(0)) / sum(rate(kb_answers_total[6h]))
+
+      - record: kb:answer_refusals:ratio_rate30m
+        expr: |
+          sum(rate(kb_answers_total{outcome=~"refused|below_floor"}[30m]))
+          / sum(rate(kb_answers_total{outcome!="error"}[30m]))
+
+      - record: kb:answer_ttft_seconds:p95_rate5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_time_to_first_token_seconds_bucket[5m])))
+      - record: kb:answer_duration_seconds:p95_rate5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(kb_answer_duration_seconds_bucket[5m])))
+
+      - record: kb:llm_cost_usd:per_hour
+        expr: sum(rate(kb_llm_cost_usd_total[1h])) * 3600
+      - record: kb:llm_cost_usd:per_answer_1h
+        expr: sum(rate(kb_llm_cost_usd_total[1h])) / sum(rate(kb_answers_total{outcome=~"answered|refused"}[1h]))
+
+  - name: kb-assistant.alerts
+    rules:
+      - alert: KbApiDown
+        expr: up{job="kb-api"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "The API isn't answering Prometheus scrapes"
+          runbook: "docker compose ps; make app-logs; is the API container healthy?"
+
+      # Multi-window, multi-burn-rate alerts (Google SRE workbook). The long window
+      # proves it's real; the short window proves it's still happening, so the alert
+      # clears quickly after a fix.
+      - alert: KbErrorBudgetFastBurn
+        expr: |
+          kb:answer_errors:ratio_rate1h > (14.4 * 0.01)
+          and kb:answer_errors:ratio_rate5m > (14.4 * 0.01)
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Answers are failing fast enough to spend the 30-day error budget in ~2 days"
+          runbook: "Check the API logs for 'ask failed' / 'stream failed'; model provider and database first."
+
+      - alert: KbErrorBudgetSlowBurn
+        expr: |
+          kb:answer_errors:ratio_rate6h > (6 * 0.01)
+          and kb:answer_errors:ratio_rate30m > (6 * 0.01)
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Answers are failing fast enough to spend the 30-day error budget in ~5 days"
+
+      - alert: KbSlowFirstToken
+        # 10 s suits a local 3B model on a laptop; set ~3 s for a hosted model.
+        expr: kb:answer_ttft_seconds:p95_rate5m > 10 and kb:answers:rate5m > 0
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "p95 time to first token is {{ $value | humanizeDuration }}"
+          runbook: "Retrieval time (kb_retrieval_duration_seconds) or the model? Check the trace in Langfuse."
+
+      - alert: KbRefusalRatioHigh
+        # Many "not found" answers: questions outside the knowledge base, a retrieval
+        # regression, or a broken index. Needs a minimum volume to mean anything.
+        expr: |
+          kb:answer_refusals:ratio_rate30m > 0.5
+          and sum(increase(kb_answers_total{outcome!="error"}[30m])) >= 10
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of answers in 30 min were refusals"
+          runbook: "Compare kb_retrieval_top_similarity with last week; run make eval."
+
+      - alert: KbModelCostHigh
+        expr: kb:llm_cost_usd:per_hour > 0.5
+        for: 15m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "Model spend is running at ${{ $value | printf \"%.2f\" }} per hour"
+          runbook: "Which model (kb_llm_cost_usd_total by model)? Unusual traffic? AWS Budgets is the backstop."

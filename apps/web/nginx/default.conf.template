@@ -21,9 +21,19 @@ server {
         return 200 '{"VITE_COGNITO_AUTHORITY":"${VITE_COGNITO_AUTHORITY}","VITE_COGNITO_CLIENT_ID":"${VITE_COGNITO_CLIENT_ID}","VITE_COGNITO_DOMAIN":"${VITE_COGNITO_DOMAIN}"}';
     }
 
-    # Same-origin API: /api/ask → ${API_UPSTREAM}/ask. The trailing slash strips /api.
+    # Look the API up when a request arrives, not only at start-up. With a plain
+    # "proxy_pass http://api:8000/" nginx resolves the name once, and exits if it can't
+    # ("host not found in upstream"), taking the UI and its health check down with it.
+    # NGINX_LOCAL_RESOLVERS comes from /etc/resolv.conf (Docker, Kubernetes and ECS alike);
+    # the image sets NGINX_ENTRYPOINT_LOCAL_RESOLVERS so the entrypoint fills it in.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+    # Same-origin API: /api/ask → ${API_UPSTREAM}/ask.
     location /api/ {
-        proxy_pass ${API_UPSTREAM}/;
+        set $api_upstream ${API_UPSTREAM};
+        # With a variable in proxy_pass nginx doesn't strip the /api prefix itself.
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
