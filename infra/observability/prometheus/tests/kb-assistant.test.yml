@@ -147,3 +147,55 @@ tests:
         exp_samples:
           - labels: 'kb:answer_errors:ratio_rate1h'
             value: 0.1
+
+  - name: Routing - escalation ratio over model answers, and the alert's volume guard
+    interval: 1m
+    input_series:
+      # Each minute: 8 answered, 2 refused, 4 escalations -> 40%.
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+8x120"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="refused"}'
+        values: "0+2x120"
+      - series: 'kb_escalations_total{from_model="llama3.2",to_model="qwen2.5:7b",result="answered"}'
+        values: "0+4x120"
+    promql_expr_test:
+      - expr: kb:escalations:ratio_rate1h
+        eval_time: 65m
+        exp_samples:
+          - labels: 'kb:escalations:ratio_rate1h'
+            value: 0.4
+    alert_rule_test:
+      - eval_time: 100m
+        alertname: KbEscalationRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: ticket
+            exp_annotations:
+              summary: "40% of answers needed the larger model"
+              runbook: "The small model is refusing with good evidence: new documents, a prompt or model change? Run make eval."
+
+  - name: Spend cap - over_budget pages, and isn't counted as a refusal
+    interval: 1m
+    input_series:
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="answered"}'
+        values: "0+10x40"
+      - series: 'kb_answers_total{endpoint="stream",mode="pipeline",outcome="over_budget"}'
+        values: "0x20 0+5x20"
+    promql_expr_test:
+      - expr: kb:answer_refusals:ratio_rate30m
+        eval_time: 40m
+        exp_samples:
+          - labels: 'kb:answer_refusals:ratio_rate30m'
+            value: 0
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: KbSpendCapReached
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: KbSpendCapReached
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "The daily spend cap is reached: questions get \"limit reached\" instead of answers"
+              runbook: "Real traffic or abuse (per-user counts in the API log)? Raise KB_DAILY_BUDGET_USD only on purpose; it resets at 00:00 UTC."

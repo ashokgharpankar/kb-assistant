@@ -8,6 +8,7 @@ Why this matters for FinOps: `KB_LLM_PROVIDER` is the switch between free local
 models (Ollama) and paid Bedrock models. Same code, different bill.
 """
 
+from decimal import Decimal
 from functools import lru_cache
 from typing import Literal, Self
 from urllib.parse import quote
@@ -51,10 +52,13 @@ class Settings(BaseSettings):
         )
         return self
 
-    @field_validator("cache_semantic_threshold", mode="before")
+    @field_validator(
+        "cache_semantic_threshold", "route_escalation_model", "daily_budget_usd", mode="before"
+    )
     @classmethod
     def _empty_means_off(cls, value: object) -> object:
-        # `KB_CACHE_SEMANTIC_THRESHOLD=` in .env must mean "off", not a parse error.
+        # `KB_CACHE_SEMANTIC_THRESHOLD=` (and the other optional settings) empty in .env
+        # must mean "off", not a parse error.
         return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("embed_dimensions")
@@ -105,6 +109,26 @@ class Settings(BaseSettings):
     cache_ttl_hours: int = Field(default=168, ge=1)
     # What the eval reports as "projected cost": local token counts priced as this model.
     projected_price_model: str = "amazon.nova-micro-v1:0"
+    # ...and the escalation model's tokens as this one (local qwen2.5:7b ~ hosted Nova Lite).
+    projected_price_model_large: str = "amazon.nova-lite-v1:0"
+
+    # Phase 8b: how sources show their heading path to the model. "heading" adds a visible
+    # "Section: ..." line; measure with `make eval` before changing the default.
+    prompt_layout: Literal["attributes", "heading"] = "attributes"
+    # Phase 8b routing (cascade): when the chat model refuses although the best chunk
+    # scores at least `route_min_similarity`, ask this larger model once with the same
+    # sources. Unset or empty = no routing. Ollama: e.g. qwen2.5:7b; Bedrock: e.g.
+    # amazon.nova-lite-v1:0 (must be in the IAM model allow-list).
+    route_escalation_model: str | None = None
+    route_min_similarity: float = Field(default=0.70, ge=0.0, le=1.0)
+
+    # Phase 8b spend cap, per UTC day, in US dollars. Unset = no cap. At
+    # `budget_soft_ratio` of it routing turns off (economy: small model only); at the cap
+    # no model is called (cache hits still answer). "projected" counts what local runs
+    # would cost on the hosted models, to rehearse the cap without a bill.
+    daily_budget_usd: Decimal | None = Field(default=None, ge=0)
+    budget_soft_ratio: float = Field(default=0.8, gt=0.0, le=1.0)
+    budget_cost_basis: Literal["actual", "projected"] = "actual"
     # The agent's hard limit on searches per question; bounds cost and latency.
     agent_max_searches: int = Field(default=3, ge=1, le=5)
 

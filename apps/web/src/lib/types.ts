@@ -38,11 +38,22 @@ export interface AskResult {
   cache?: 'exact' | 'semantic' | null
   cache_similarity?: number | null
   cost_saved_usd?: string
+  /** Phase 8b: the model that tried first when routing escalated; spend-cap level. */
+  escalated_from?: string | null
+  degraded?: 'economy' | 'over_budget' | null
+}
+
+/** Phase 8b routing: a larger model answers next; with reset, drop the text so far. */
+export interface Escalation {
+  from_model: string
+  to_model: string
+  reset: boolean
 }
 
 export type StreamEvent =
   | { type: 'sources'; sources: Source[] }
   | { type: 'token'; text: string }
+  | { type: 'escalate'; escalation: Escalation }
   | { type: 'done'; result: AskResult }
   | { type: 'error'; detail: string }
 

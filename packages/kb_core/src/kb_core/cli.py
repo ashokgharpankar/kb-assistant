@@ -21,7 +21,7 @@ import typer
 
 from kb_core.factory import build_answerer, build_retriever, build_store
 from kb_core.ingest import DocumentResult, ingest_path
-from kb_core.models import DoneEvent, RetrievedChunk, TokenEvent
+from kb_core.models import DoneEvent, EscalateEvent, RetrievedChunk, TokenEvent
 from kb_core.providers import chat_model_id, embedding_space, get_chat_model, get_embeddings
 from kb_core.settings import Settings, get_settings
 from kb_core.tracing import NoopTracer
@@ -137,6 +137,9 @@ def ask(
             if isinstance(event, TokenEvent) and stream:
                 typer.echo(event.text, nl=False)
                 printed = True
+            elif isinstance(event, EscalateEvent):
+                typer.echo(f"\n[{event.from_model} refused; asking {event.to_model}]\n")
+                printed = False
             elif isinstance(event, DoneEvent):
                 answer = event.answer
     finally:
@@ -161,6 +164,15 @@ def ask(
         )
         + f"first_token={ttft} total={answer.total_ms:.0f}ms"
     )
+    if answer.escalation:
+        e = answer.escalation
+        typer.echo(
+            f"escalated: {e.model} refused with strong evidence ({e.input_tokens} in / "
+            f"{e.output_tokens} out), answered by {answer.model}; total "
+            f"${answer.total_cost_usd:.6f}"
+        )
+    if answer.degraded:
+        typer.echo(f"spend cap: {answer.degraded}")
     if answer.cache:
         typer.echo(
             f"from cache: {answer.cache} (similarity {answer.cache_similarity:.3f}), "
@@ -298,6 +310,8 @@ def evaluate(
             mark = "ok  " if result.passed(s.retrieval_k) else "FAIL"
         top = f"{result.top_similarity:.3f}" if result.top_similarity is not None else "  -  "
         again = f"  ({result.searches} searches)" if result.searches > 1 else ""
+        if result.escalated_from:
+            again += f"  (escalated from {result.escalated_from})"
         typer.echo(f"  {mark} {top}  {result.id}{again}")
 
     created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -311,6 +325,10 @@ def evaluate(
         "max_searches": s.agent_max_searches if s.answer_mode == "agent" else 1,
         "toc_depth": s.toc_depth,
         "chunk_headers": s.chunk_headers,
+        "prompt_layout": s.prompt_layout,
+        "priced_as": s.projected_price_model,
+        "route_to": s.route_escalation_model,
+        "route_min_similarity": s.route_min_similarity if s.route_escalation_model else None,
         "candidates": s.retrieval_candidates,
         "dataset": str(dataset),
         "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest()[:12],
@@ -334,6 +352,7 @@ def evaluate(
         llm_judge,
         on_case=progress,
         projected_model=s.projected_price_model,
+        projected_model_large=s.projected_price_model_large if s.route_escalation_model else None,
     )
     store.close()
 

@@ -84,6 +84,18 @@ class Grounding:
     unknown_terms: list[str] = field(default_factory=list)  # terms in no retrieved chunk
 
 
+@dataclass(frozen=True)
+class Escalation:
+    """The first model's attempt when routing passed the question on (Phase 8b): what it
+    cost, so the answer's total cost includes the call that didn't make it."""
+
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: Decimal
+    reason: str  # "refused_with_evidence"
+
+
 @dataclass
 class Answer:
     question: str
@@ -113,6 +125,24 @@ class Answer:
     cache_similarity: float | None = None
     cost_saved_usd: Decimal = Decimal(0)
     tokens_saved: int = 0
+    # Routing (Phase 8b): set when a smaller model's attempt came first. `model` and the
+    # token fields above describe the model that wrote this text.
+    escalation: Escalation | None = None
+    # Spend cap (Phase 8b): "economy" when the daily budget's soft limit turned routing
+    # off for this answer. Degraded answers are never cached.
+    degraded: str | None = None
+
+    @property
+    def total_cost_usd(self) -> Decimal:
+        return self.cost_usd + (self.escalation.cost_usd if self.escalation else Decimal(0))
+
+    @property
+    def total_input_tokens(self) -> int:
+        return self.input_tokens + (self.escalation.input_tokens if self.escalation else 0)
+
+    @property
+    def total_output_tokens(self) -> int:
+        return self.output_tokens + (self.escalation.output_tokens if self.escalation else 0)
 
 
 # --- streaming events ----------------------------------------------------------
@@ -134,4 +164,14 @@ class DoneEvent:
     answer: Answer
 
 
-StreamEvent = SourcesEvent | TokenEvent | DoneEvent
+@dataclass(frozen=True)
+class EscalateEvent:
+    """Routing passed the question to a larger model (Phase 8b). `reset` is True when the
+    first model's text was already streamed: the client discards it and starts again."""
+
+    from_model: str
+    to_model: str
+    reset: bool
+
+
+StreamEvent = SourcesEvent | TokenEvent | EscalateEvent | DoneEvent

@@ -1,5 +1,5 @@
 import { readSSE } from './sse'
-import type { AskResult, Health, Source, StreamEvent } from './types'
+import type { AskResult, Escalation, Health, Source, StreamEvent } from './types'
 
 /** Same-origin path; Vite (dev) and CloudFront (AWS) forward it to the API. */
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? '/api'
@@ -65,6 +65,9 @@ export async function* askStream(
         break
       case 'token':
         yield { type: 'token', text: (data as { text: string }).text }
+        break
+      case 'escalate':
+        yield { type: 'escalate', escalation: data as Escalation }
         break
       case 'done':
         yield { type: 'done', result: data as AskResult }

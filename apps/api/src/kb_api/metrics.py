@@ -96,6 +96,20 @@ TOKENS = Counter(
     ["model", "direction"],
     registry=REGISTRY,
 )
+ESCALATIONS = Counter(
+    "kb_escalations",
+    "Questions routed to the larger model after the first refused with strong evidence "
+    "(Phase 8b), by whether the larger model then answered.",
+    ["from_model", "to_model", "result"],
+    registry=REGISTRY,
+)
+DEGRADED = Counter(
+    "kb_answers_degraded",
+    "Answers under the daily spend cap: economy (routing off, at the soft limit) or "
+    "over_budget (no model call).",
+    ["level"],
+    registry=REGISTRY,
+)
 CACHE = Counter(
     "kb_cache_requests",
     "Answer-cache lookups by result: exact, semantic or miss (blocked questions never reach it).",
@@ -146,9 +160,12 @@ OUTCOMES = ("answered", "refused", "below_floor", "blocked", "error")
 
 
 def outcome_of(answer: Answer) -> str:
-    """answered, refused (the model said "not found"), below_floor (no model call), or
-    blocked (the input screen stopped it before retrieval). The other two outcomes,
-    error and cancelled, have no answer: see record_error and record_cancelled."""
+    """answered, refused (the model said "not found"), below_floor (no model call),
+    blocked (the input screen stopped it before retrieval) or over_budget (the daily spend
+    cap, Phase 8b). The other two outcomes, error and cancelled, have no answer: see
+    record_error and record_cancelled."""
+    if answer.blocked_by == "budget":
+        return "over_budget"
     if answer.blocked_by:
         return "blocked"
     if answer.answered_from_context:
@@ -161,8 +178,11 @@ def outcome_of(answer: Answer) -> str:
 
 def record_answer(answer: Answer, endpoint: str, mode: str, cache_on: bool = True) -> None:
     ANSWERS.labels(endpoint=endpoint, mode=mode, outcome=outcome_of(answer)).inc()
+    if answer.degraded:
+        DEGRADED.labels(level=answer.degraded).inc()
     if answer.blocked_by:
-        BLOCKED.labels(reason=answer.blocked_by).inc()
+        if answer.blocked_by != "budget":
+            BLOCKED.labels(reason=answer.blocked_by).inc()
         return  # nothing was retrieved or generated
     if answer.grounding is not None:
         if answer.grounding.score is not None:
@@ -188,6 +208,14 @@ def record_answer(answer: Answer, endpoint: str, mode: str, cache_on: bool = Tru
         TOKENS.labels(model=answer.model, direction="input").inc(answer.input_tokens)
         TOKENS.labels(model=answer.model, direction="output").inc(answer.output_tokens)
         COST.labels(model=answer.model).inc(float(answer.cost_usd))
+    esc = answer.escalation
+    if esc is not None:
+        # The first model's call was paid for too: count it under its own model.
+        TOKENS.labels(model=esc.model, direction="input").inc(esc.input_tokens)
+        TOKENS.labels(model=esc.model, direction="output").inc(esc.output_tokens)
+        COST.labels(model=esc.model).inc(float(esc.cost_usd))
+        result = "answered" if answer.answered_from_context else "refused"
+        ESCALATIONS.labels(from_model=esc.model, to_model=answer.model, result=result).inc()
 
 
 def record_cancelled(endpoint: str, mode: str) -> None:

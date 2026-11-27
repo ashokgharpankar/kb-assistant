@@ -27,7 +27,14 @@ from starlette.concurrency import iterate_in_threadpool
 
 from kb_core import __version__
 from kb_core.factory import build_answerer
-from kb_core.models import Answer, DoneEvent, SourcesEvent, StreamEvent, TokenEvent
+from kb_core.models import (
+    Answer,
+    DoneEvent,
+    EscalateEvent,
+    SourcesEvent,
+    StreamEvent,
+    TokenEvent,
+)
 from kb_core.settings import get_settings
 
 from . import metrics
@@ -100,6 +107,10 @@ class AskResponse(BaseModel):
     cache: str | None = None
     cache_similarity: float | None = None
     cost_saved_usd: str = "0"
+    # Phase 8b: the model that tried first when routing escalated, and the spend-cap level
+    # ("economy" or "over_budget") when it changed the answer. cost_usd is the total.
+    escalated_from: str | None = None
+    degraded: str | None = None
 
 
 class Pipeline(Protocol):
@@ -152,9 +163,9 @@ def to_response(answer: Answer) -> AskResponse:
         ],
         answered_from_context=answer.answered_from_context,
         model=answer.model,
-        input_tokens=answer.input_tokens,
-        output_tokens=answer.output_tokens,
-        cost_usd=str(answer.cost_usd),
+        input_tokens=answer.total_input_tokens,
+        output_tokens=answer.total_output_tokens,
+        cost_usd=str(answer.total_cost_usd),
         time_to_first_token_ms=answer.time_to_first_token_ms,
         total_ms=answer.total_ms,
         grounding_score=None if g is None or g.score is None else round(g.score, 3),
@@ -165,6 +176,8 @@ def to_response(answer: Answer) -> AskResponse:
         if answer.cache_similarity is None
         else round(answer.cache_similarity, 4),
         cost_saved_usd=str(answer.cost_saved_usd),
+        escalated_from=None if answer.escalation is None else answer.escalation.model,
+        degraded=answer.degraded,
     )
 
 
@@ -220,6 +233,17 @@ def event_stream(pipeline: Pipeline, question: str) -> Iterator[str]:
                 )
             elif isinstance(event, TokenEvent):
                 yield sse("token", {"text": event.text})
+            elif isinstance(event, EscalateEvent):
+                # Routing (Phase 8b): a larger model answers next. With reset, the client
+                # discards the text it has (the first model's refusal) and starts again.
+                yield sse(
+                    "escalate",
+                    {
+                        "from_model": event.from_model,
+                        "to_model": event.to_model,
+                        "reset": event.reset,
+                    },
+                )
             elif isinstance(event, DoneEvent):
                 metrics.record_answer(
                     event.answer, "stream", answer_mode(), get_settings().cache_enabled

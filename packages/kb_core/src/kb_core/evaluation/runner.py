@@ -54,6 +54,10 @@ class CaseResult:
     grounding_score: float | None = None
     unsupported: list[str] = field(default_factory=list)
     unknown_terms: list[str] = field(default_factory=list)
+    # Phase 8b routing: the first model's attempt when the question was escalated
+    escalated_from: str | None = None
+    escalation_input_tokens: int = 0
+    escalation_output_tokens: int = 0
     judge_score: int | None = None
     judge_unsupported: list[str] = field(default_factory=list)
     error: str | None = None
@@ -123,9 +127,14 @@ def run_case(
         }
         result.fact_recall = fact_recall(answer.text, case.facts) if case.should_answer else None
         result.leaked = [p for p in case.must_not_contain if contains_any(answer.text, [p])]
-        result.input_tokens = answer.input_tokens
-        result.output_tokens = answer.output_tokens
-        result.cost_usd = str(answer.cost_usd)
+        # Totals: an escalated question paid for both model calls.
+        result.input_tokens = answer.total_input_tokens
+        result.output_tokens = answer.total_output_tokens
+        result.cost_usd = str(answer.total_cost_usd)
+        if answer.escalation is not None:
+            result.escalated_from = answer.escalation.model
+            result.escalation_input_tokens = answer.escalation.input_tokens
+            result.escalation_output_tokens = answer.escalation.output_tokens
         result.ttft_ms = answer.time_to_first_token_ms
         result.total_ms = answer.total_ms
         result.searches = answer.searches
@@ -145,17 +154,35 @@ def run_case(
     return result
 
 
+def projected_cost(c: CaseResult, small: str, large: str | None) -> float:
+    """A case's tokens priced on hosted models: the first model's call as `small`, an
+    escalated call as `large` (local qwen2.5:7b ~ hosted Nova Lite)."""
+    if c.escalated_from is None or large is None:
+        return float(cost_usd(small, c.input_tokens, c.output_tokens))
+    first_in, first_out = c.escalation_input_tokens, c.escalation_output_tokens
+    return float(
+        cost_usd(small, first_in, first_out)
+        + cost_usd(large, c.input_tokens - first_in, c.output_tokens - first_out)
+    )
+
+
 def summarise(
-    cases: Sequence[CaseResult], k: int, floor: float, projected_model: str | None = None
+    cases: Sequence[CaseResult],
+    k: int,
+    floor: float,
+    projected_model: str | None = None,
+    projected_model_large: str | None = None,
 ) -> tuple[dict[str, float | None], list[dict[str, float]]]:
     ok = [c for c in cases if not c.error]
     # The same tokens priced on a hosted model: a local run's real cost is $0, which says
     # nothing about the bill after deploy.
     projected = (
-        float(sum(cost_usd(projected_model, c.input_tokens, c.output_tokens) for c in ok))
+        sum(projected_cost(c, projected_model, projected_model_large) for c in ok)
         if projected_model
         else None
     )
+    reached_model = [c for c in ok if c.blocked_by is None and c.input_tokens]
+    escalated = [c for c in ok if c.escalated_from]
     answerable = [c for c in ok if c.kind == "answerable"]
     off_topic = [c for c in ok if c.kind in ("out_of_scope", "injection")]
     injections = [c for c in ok if c.kind == "injection"]
@@ -209,6 +236,13 @@ def summarise(
         "cost.tokens_in": float(sum(c.input_tokens for c in ok)),
         "cost.tokens_out": float(sum(c.output_tokens for c in ok)),
         "cost.searches_per_question": mean([float(c.searches) for c in ok]) if ok else None,
+        # Phase 8b routing: how often the larger model was needed, and whether it helped.
+        "routing.escalation_rate": (len(escalated) / len(reached_model) if reached_model else None),
+        # Passed, not "answered": for a question the docs don't cover, answering is the
+        # failure (Phase 8b: an escalation turned a correct refusal into a flagged answer).
+        "routing.escalations_passed": (
+            share(escalated, lambda c: c.passed(k)) if escalated else None
+        ),
         # Phase 8: what this run would cost on a hosted model (local runs are $0), and per
         # question, the number a budget is built from.
         "cost.projected_usd": projected,
@@ -231,7 +265,7 @@ def summarise(
 
 
 # Metrics that need a generated answer; absent (None) in a retrieval-only run.
-_NEEDS_ANSWERS = ("answer.", "cost.", "latency.", "cases.pass_rate")
+_NEEDS_ANSWERS = ("answer.", "cost.", "latency.", "routing.", "cases.pass_rate")
 
 
 def run_eval(
@@ -245,6 +279,7 @@ def run_eval(
     judge: LLMJudge | None = None,
     on_case: Callable[[CaseResult], None] | None = None,
     projected_model: str | None = None,
+    projected_model_large: str | None = None,
 ) -> EvalRun:
     results = []
     for case in cases:
@@ -252,7 +287,7 @@ def run_eval(
         if on_case:
             on_case(result)
         results.append(result)
-    metrics, points = summarise(results, k, floor, projected_model)
+    metrics, points = summarise(results, k, floor, projected_model, projected_model_large)
     if answer_fn is None:
         metrics = {n: (None if n.startswith(_NEEDS_ANSWERS) else v) for n, v in metrics.items()}
     return EvalRun(
